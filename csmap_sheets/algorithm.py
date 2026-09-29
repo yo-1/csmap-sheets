@@ -356,8 +356,8 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                      slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,render_mode='fme_manual',fme=fme)
             feedback.pushInfo('組込み設定プロファイルを適用しました: '+('標準CS・1m' if profile_choice==1 else '試験処理・2m'))
         elif profile_choice==3:
-            # Separate, opt-in provisional value said to approximate the 林野庁 setting - not
-            # the manual's own figure. Never overwrites the FME manual default
+            # Separate, opt-in provisional value (not the manual's own figure).
+            # Never overwrites the FME manual default
             # (profile_choice 1/2) silently; the person must choose this profile explicitly.
             c.update(cell_size=1.,sigma_m=3.,curvature_limit=.03,
                      slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,render_mode='fme_manual',fme=fme)
