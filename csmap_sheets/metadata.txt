@@ -1,0 +1,45 @@
+[general]
+name=CS Map Sheets
+qgisMinimumVersion=3.44
+qgisMaximumVersion=3.99
+description=DEMマージ・CS方式色調調整・国土基本図図郭GeoTIFF・XYZ PNG/WebP(可逆/非可逆)生成
+about=DEMを国土基本図図郭単位のGeoTIFFおよびXYZタイルへ変換し、曲率・傾斜・標高からCS立体図（長野県林業総合センター考案）の色調を付けるプラグインです。描画方式は「独自方式（v0.4互換）」と「FMEマニュアル方式」（Pacific Spatial Solutions社「FMEによるシームレスCS立体図の作成」準拠、標高・傾斜A・傾斜B・曲率A・曲率Bの5レイヤー加重合成）から選択できます。曲率飽和値はFMEマニュアル仕様（確認済み±0.1）と林野庁の運用値（±0.03）を別プロファイルとして用意しています。傾斜・平滑化などの地形量そのものの計算方法はFME版と完全には一致しないため、画素単位の完全互換を保証するものではありません。XYZタイルはPNG（既定）とWebP（要GDAL WEBPドライバ）から選択でき、WebPは既定で可逆(lossless)、設定で非可逆(lossy、QUALITY 1-100・既定75)にも切り替えられます。QGIS 3.44向けの試作版です。
+version=0.9.0
+author=Yoichi Wada
+email=
+homepage=
+tracker=
+repository=
+changelog=0.9.0
+    - XYZ画像形式でWebPを選んだ場合に、既定の可逆(lossless)に加えて非可逆(lossy)も選択できるように
+      変更（ユーザー要望、2026-09-28）。「WebPを可逆(lossless)にする」を無効にすると、QUALITY
+      （1-100、既定75、GDAL WEBPドライバの既定値と同じ）で圧縮率を指定できる。作成オプションは
+      LOSSLESS=FALSE・QUALITY=<値>をGDAL WEBPドライバへ明示的に渡す。WEBPドライバが利用できない
+      環境では、可逆・非可逆いずれの設定でも従来どおりPNGへ黙って切替えず、明確なエラーで停止する。
+
+    0.8.1
+    - 森林航空レーザ成果（LEM）入力で、対応する同名.csvメタデータが存在しないLEMファイルが多数（数百～千件規模）ある場合に、QGISが長時間「応答なし」になる不具合を修正。原因はLEMファイル1個ごとにフォルダ全件をglob()で再走査していたことによるO(件数^2)のファイルシステム走査（798件規模で約60万回相当）。フォルダごとに.csv一覧を1回だけ走査してキャッシュする方式へ変更し、対応CSVが無い場合は従来どおり明確なエラー（「LEM requires its companion metadata CSV with the same stem」）で即座に停止するよう変更（PNG/WebPと同様、黙ったフォールバックは行わない）。
+
+    0.8.0
+    - XYZタイルの画像形式にWebP（可逆圧縮）を追加。既定はPNGのまま。GDAL WEBPドライバが利用できない環境ではPNGへ黙って切り替えず、明確なエラーで停止。
+    - 使用形式・エンコーダー（GDALドライバ名・作成オプション）をrun.json/xyz.jsonへ記録。
+
+    0.7.1
+    - 標高色の下限/上限を対象範囲の実データから自動検出するオプションを追加（余白付き、run.jsonに記録）。
+
+    0.6.0
+    - 曲率飽和値のプロファイルを「FMEマニュアル方式（暫定±0.1）」と「林野庁調整値（±0.03）」に分離し、後者を組込みプロファイルとして追加。
+    - FME方式のRGBストレッチを「なし」「長野県実績値」「カスタム」から選べるように変更（既定は長野県実績値）。
+    - 独自方式（v0.4互換）の初期値が曲率±0.03側に引き寄せられていた不具合を修正。
+
+    0.5.2
+    - 独自方式とFMEマニュアル方式の描画・パラメータを完全に分離。
+    - FMEマニュアル方式に標高・傾斜A・傾斜B・曲率A・曲率Bの5レイヤー加重合成、色の個別設定、任意のRGBストレッチを追加。
+    - 処理設定・色設定をrun.jsonへ記録するように変更。
+
+    Copyright (C) 2026 Yoichi Wada. GNU GPL v3.0 only.
+category=Raster
+hasProcessingProvider=yes
+experimental=True
+deprecated=False
+icon=icon.svg
