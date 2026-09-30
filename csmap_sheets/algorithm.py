@@ -12,9 +12,15 @@ from qgis.core import (
     QgsProcessingParameterFolderDestination, QgsProcessingOutputRasterLayer,
     QgsProcessingOutputVectorLayer, QgsProcessingOutputFile, QgsProcessingContext,
     QgsProviderRegistry, QgsVariantUtils, QgsProcessingOutputFolder,
-    QgsProcessingParameterFile, QgsProcessingParameterString, QgsProcessingParameters,
-    QgsProcessingParameterFileDestination,
+    QgsProcessingParameterFile, QgsProcessingParameterString,
+    QgsProcessingParameterFileDestination, QgsCoordinateReferenceSystem,
 )
+
+# v0.9.3: 個別ファイル選択（FILESパラメータ）の件数上限。QGIS自身の
+# Processingフレームワークが実行時に選択件数分のレイヤー解決を試みる挙動により、
+# 件数超過時にQGISが長時間「応答なし」になることが確認されている（詳細は
+# prepareAlgorithm()内のコメントを参照）。暫定値であり、実運用での再調整を想定。
+INDIVIDUAL_FILE_SELECTION_LIMIT = 100
 
 COLOR_NUMBERS = [
     ('curvature_strength','曲率色の濃さ',1.,0.,1.),
@@ -84,7 +90,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         profile=self.addParameter(QgsProcessingParameterEnum('PROFILE','設定プロファイル',
             ['画面の設定を使用','標準CS・1m（FMEマニュアル方式、曲率±0.1）',
              '試験処理・2m（FMEマニュアル方式、曲率±0.1）',
-             '林野庁近似設定（暫定）・1m（曲率±0.03）','外部JSONプロファイル'],defaultValue=0))
+             '林野庁調整・暫定・1m（曲率±0.03）','外部JSONプロファイル'],defaultValue=0))
         profile_file=QgsProcessingParameterFile('PROFILE_FILE','読込む設定プロファイル（JSON）',
             extension='json',optional=True)
         profile_file.setFlags(profile_file.flags() | Qgis.ProcessingParameterFlag.Advanced);self.addParameter(profile_file)
@@ -147,7 +153,10 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             param=QgsProcessingParameterNumber(key,'SMRF：'+label,QgsProcessingParameterNumber.Double,default,minValue=.001,maxValue=1000.)
             param.setFlags(param.flags() | Qgis.ProcessingParameterFlag.Advanced)
             self.addParameter(param)
-        self.addParameter(QgsProcessingParameterCrs('CRS','出力の平面直角座標系（対象地域・測地系に合わせる）','EPSG:6677'))
+        self.addParameter(QgsProcessingParameterCrs('CRS',
+            '出力の平面直角座標系（空欄なら入力ラスターのCRSから第I～XIX系のいずれかを自動推定。'
+            '入力がラスターでない場合や自動推定できない場合は明示指定が必須）',
+            optional=True))
         self.addParameter(QgsProcessingParameterEnum('LEVEL','国土基本図の図郭レベル',
             ['5000：東西4000m × 南北3000m','2500：東西2000m × 南北1500m',
              '1000：東西800m × 南北600m','500：東西400m × 南北300m'],defaultValue=0))
@@ -221,9 +230,12 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             self.addParameter(QgsProcessingParameterNumber(key,label,
                 QgsProcessingParameterNumber.Integer,default,minValue=lo,maxValue=hi))
         self.addOutput(QgsProcessingOutputFolder('XYZ_FOLDER','XYZタイルフォルダー'))
+        self.addParameter(QgsProcessingParameterBoolean('MERGED_GEOTIFF',
+            '図郭タイルに加えて、全域CS方式画像を結合済み1枚のGeoTIFFとしても出力する',True))
         self.addParameter(QgsProcessingParameterBoolean('LOAD','終了後に全域CS画像と図郭索引を読み込む',True))
         self.addParameter(QgsProcessingParameterFolderDestination('OUTPUT','出力先の親フォルダー'))
         self.addOutput(QgsProcessingOutputRasterLayer('CS_IMAGE','全域CS方式画像'))
+        self.addOutput(QgsProcessingOutputRasterLayer('CS_MERGED_GEOTIFF','全域CS方式画像（結合GeoTIFF）'))
         self.addOutput(QgsProcessingOutputVectorLayer('SHEET_INDEX','出力図郭索引'))
         self.addOutput(QgsProcessingOutputFile('MANIFEST','処理記録'))
         self.addOutput(QgsProcessingOutputFolder('INPUT_WORK','入力変換の中間成果・点群分類結果'))
@@ -235,14 +247,40 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         from .engine.input_sources import explicit_file_parameter, _absolute_path, EXTENSIONS
         mode=['raster','gsi','text','lidar','forest'][self.parameterAsEnum(parameters,'INPUT_TYPE',context)]
         layers=self.parameterAsLayerList(parameters,'DEMS',context) if mode=='raster' else []
-        # Read the raw FILES value first. In QGIS 3.44 a stale Processing
-        # context file list was observed from parameterAsFileList even though
-        # the dialog and parameter log contained a different current value.
+        # Read the raw FILES value only. In QGIS 3.44, QgsProcessingParameters
+        # .parameterAsFileList() was observed (2026-09-30, user report) to return
+        # a completely unrelated stale path (a Windows special folder such as
+        # "Documents/My Music") even though the official "入力パラメータ" log
+        # dump and this raw dict both showed FILES as None/empty at the same
+        # moment. Since the raw parameters dict has matched reality in every
+        # observed case (both when a value was present and when it was empty),
+        # it alone decides whether files were explicitly selected; the
+        # unreliable parameterAsFileList() fallback that used to run when
+        # raw_files was empty has been removed entirely, rather than trusted
+        # for a "maybe more accurate" empty-case value.
+        # 未確認の残存リスク：このフォールバックは元々、生パラメータ側が異常値を
+        # 返す別の不具合への対策として追加されていた（詳細な経緯は現行コードから
+        # 追跡できず未確認）。今回の実測（異常時・正常時の両方でraw_filesが実態と
+        # 一致）を根拠に削除するが、将来「生パラメータが空でないのに実際の選択と
+        # 食い違う」という逆パターンが再発する可能性は否定できない。
         raw_files=parameters.get('FILES')
         raw_present=not QgsVariantUtils.isNull(raw_files) and raw_files not in ('',[])
         paths=explicit_file_parameter(raw_files) if raw_present else []
-        if not paths and not raw_present:
-            paths=QgsProcessingParameters.parameterAsFileList(self.parameterDefinition('FILES'),parameters,context)
+        # v0.9.3: 個別ファイル選択（FILESパラメータでのチェックボックス方式）は、
+        # QGIS自身のProcessingフレームワークが実行時に選択件数分のレイヤー解決を
+        # 試みるため、件数が多い（実測で数百～千件超）と主スレッドが長時間
+        # 「応答なし」になることを確認済み（ユーザー報告、2026-09-30。MORIZON
+        # 監視ツールで約56分の無応答を実測）。この根本原因はQGIS本体側の挙動で
+        # あり本プラグインのPythonコードでは直接制御できないため、事前に件数を
+        # 検査し、閾値超過時は処理を開始せず「入力フォルダー」の使用を明確に
+        # 案内する。閾値(INDIVIDUAL_FILE_SELECTION_LIMIT)は暫定値であり、実運用
+        # での再調整を想定する。
+        if raw_present and len(paths) > INDIVIDUAL_FILE_SELECTION_LIMIT:
+            raise QgsProcessingException(
+                f'個別ファイル選択が{len(paths)}件と多いため処理を開始しません'
+                f'（上限{INDIVIDUAL_FILE_SELECTION_LIMIT}件）。QGIS自身の内部処理により'
+                'QGISが長時間「応答なし」になることが確認されています。'
+                '「入力フォルダー」を指定する方法に切り替えてください。')
         folder=self.parameterAsFile(parameters,'INPUT_FOLDER',context)
         if paths and folder:
             feedback.pushInfo('入力ファイルが明示指定されているため、入力フォルダーは使用しません: '+folder)
@@ -272,8 +310,38 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             columns=[int(v.strip()) for v in self.parameterAsString(parameters,'TEXT_COLUMNS',context).split(',')] if mode=='text' else [1,2,3]
             classes=[int(v.strip()) for v in self.parameterAsString(parameters,'GROUND_CLASSES',context).split(',')] if mode=='lidar' else [2]
         except ValueError as exc:raise QgsProcessingException('列番号・分類コードは整数をカンマで区切って指定してください。') from exc
-        crs=self.parameterAsCrs(parameters,'CRS',context)
-        if not crs.isValid():raise QgsProcessingException('有効な出力座標系を選択してください。')
+        crs_raw=parameters.get('CRS')
+        crs_set=not QgsVariantUtils.isNull(crs_raw) and str(crs_raw).strip()!=''
+        if crs_set:
+            crs=self.parameterAsCrs(parameters,'CRS',context)
+            if not crs.isValid():raise QgsProcessingException('有効な出力座標系を選択してください。')
+        else:
+            # v0.9.3: CRSが未指定の場合、入力(先頭のラスターファイル)のCRSから
+            # 平面直角座標系第I～XIX系を自動推定する（ユーザー要望、2026-09-30）。
+            # あくまで「入力が既にJPRゾーンの1つである場合にそれを推定するだけ」で
+            # あり、任意の座標系から最寄りのゾーンへ変換・推測することはしない
+            # （黙ったフォールバックは行わない設計方針を維持するため）。
+            # ラスター以外の入力種別では、入力のCRSがINPUT_CRSで別途扱われ、かつ
+            # 必ずしも投影済みJPRゾーンとは限らないため自動推定の対象外とする。
+            if mode != 'raster':
+                raise QgsProcessingException(
+                    '出力座標系（CRS）を明示的に選択してください。ラスター以外の'
+                    '入力種別では自動推定していません。')
+            if not paths:
+                raise QgsProcessingException('入力ファイルまたはフォルダーを指定してください。')
+            from osgeo import gdal as _gdal
+            from .engine.pipeline import infer_target_crs_from_raster
+            probe_path=paths[0]
+            inferred_wkt=infer_target_crs_from_raster(probe_path,_gdal,feedback=feedback)
+            if inferred_wkt is None:
+                raise QgsProcessingException(
+                    '出力座標系（CRS）が未指定で、かつ入力「'+probe_path+'」のCRSから'
+                    '平面直角座標系第I～XIX系のいずれかを自動推定できませんでした。'
+                    'CRSを明示的に選択してください。')
+            crs=QgsCoordinateReferenceSystem(inferred_wkt)
+            if not crs.isValid():
+                raise QgsProcessingException('入力から自動推定した出力座標系が無効です: '+probe_path)
+            feedback.pushInfo('出力座標系を入力から自動推定しました（'+probe_path+'）: '+crs.authid())
         render_mode=['independent_v040','fme_manual'][self.parameterAsEnum(parameters,'RENDER_MODE',context)]
         legacy_preset=self.parameterAsEnum(parameters,'LEGACY_PRESET',context)
         color=dict(COLOR_DEFAULTS)
@@ -345,7 +413,8 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             color=color,render_mode=render_mode,fme=fme,
             confirm_elevation_metres=self.parameterAsBool(parameters,'METRES',context),
             source_nodata=None if QgsVariantUtils.isNull(nd) or nd == '' else self.parameterAsDouble(parameters,'NODATA',context),
-            compression=['DEFLATE','NONE'][self.parameterAsEnum(parameters,'COMPRESSION',context)])
+            compression=['DEFLATE','NONE'][self.parameterAsEnum(parameters,'COMPRESSION',context)],
+            merged_geotiff_enabled=self.parameterAsBool(parameters,'MERGED_GEOTIFF',context))
         if render_mode == 'independent_v040' and legacy_preset != 1:
             c.update(curvature_limit=.05,elevation_range=[0.,3000.],elevation_range_auto=False)
         for key in ('smrf_cell','smrf_slope','smrf_threshold','smrf_scalar','smrf_window'):
@@ -356,12 +425,12 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                      slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,render_mode='fme_manual',fme=fme)
             feedback.pushInfo('組込み設定プロファイルを適用しました: '+('標準CS・1m' if profile_choice==1 else '試験処理・2m'))
         elif profile_choice==3:
-            # Separate, opt-in provisional value (not the manual's own figure).
-            # Never overwrites the FME manual default
+            # Separate, opt-in value relayed verbally by a 林野庁 (Forestry Agency) staff
+            # member - not the manual's own figure. Never overwrites the FME manual default
             # (profile_choice 1/2) silently; the person must choose this profile explicitly.
             c.update(cell_size=1.,sigma_m=3.,curvature_limit=.03,
                      slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,render_mode='fme_manual',fme=fme)
-            feedback.pushInfo('組込み設定プロファイルを適用しました: 林野庁近似設定（暫定）（曲率±0.03）')
+            feedback.pushInfo('組込み設定プロファイルを適用しました: 林野庁調整・暫定（曲率±0.03）')
         elif profile_choice==4:
             profile_path=self.parameterAsFile(parameters,'PROFILE_FILE',context)
             if not profile_path:raise QgsProcessingException('外部JSONプロファイルを選択してください。')
@@ -418,6 +487,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                  'MANIFEST':str(self.result_dir/'run.json')}
         outputs['INPUT_WORK']=str(self.result_dir/'input') if (self.result_dir/'input').is_dir() else ''
         outputs['XYZ_FOLDER']=str(self.result_dir/'xyz') if self.settings['xyz_enabled'] else ''
+        outputs['CS_MERGED_GEOTIFF']=str(self.result_dir/'cs_relief_merged.tif') if self.settings['merged_geotiff_enabled'] else ''
         if self.load_outputs and context.project() is not None:
             for key,label in [('CS_IMAGE','CS方式立体図'),('SHEET_INDEX','CS出力図郭')]:
                 context.addLayerToLoadOnCompletion(outputs[key],

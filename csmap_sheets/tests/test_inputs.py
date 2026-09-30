@@ -334,6 +334,24 @@ class InputTests(unittest.TestCase):
             self.assertEqual(inputs.discover([str(root)],root,config(input_type='lidar',recursive=False)),[str(a)])
             with self.assertRaises(ValueError):inputs.discover([str(a)],root,config(input_type='gsi'))
 
+    def test_individually_selected_companion_only_extensions_are_silently_skipped(self):
+        # v0.9.3: フォルダー選択時は元々.tfw等が黙ってスキップされていたが、
+        # 個別ファイル選択時だけ「Input extension does not match input_type」で
+        # 強制停止していた（ユーザー報告、2026-09-30）。.tfw/.tifw/.wldは
+        # そもそも単独では主入力になり得ない同梱物なので、個別選択でも
+        # フォルダー選択と同じく黙ってスキップするよう統一したことを確認する。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);tif=root/'dem.tif';tif.touch();tfw=root/'dem.tfw';tfw.touch()
+            self.assertEqual(inputs.discover([str(tif),str(tfw)],root,config(input_type='raster')),[str(tif)])
+            # tfw/tifw/wldのみを個別選択した場合は、有効な入力が1件もないため
+            # 従来どおり明確なエラーで停止する(黙って「入力0件」を通さない)。
+            with self.assertRaises(ValueError):
+                inputs.discover([str(tfw)],root,config(input_type='raster'))
+            # 同梱物とは無関係の拡張子不一致は、引き続き個別選択時にエラーとする。
+            bad=root/'notes.txt';bad.touch()
+            with self.assertRaises(ValueError):
+                inputs.discover([str(bad)],root,config(input_type='raster'))
+
     def test_text_columns_axes_nodata_encoding(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/'測量.csv';p.write_text('番号,X,Y,Z\n1,100,200,0\n2,101,200,-9999\n3,102,200,-3\n',encoding='cp932')

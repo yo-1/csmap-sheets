@@ -18,7 +18,7 @@ from .map_sheets import dimensions, cut_sheets, intersecting_sheets
 from .progress import report, check_cancel, gdal_progress, CancelledError
 from .color_fme import render_fme, rendering_record as fme_rendering_record, validate_fme_settings
 
-VERSION = "0.9.2"
+VERSION = "0.9.3"
 from .xyz_tiles import DEFAULTS as XYZ_DEFAULTS, validate_xyz, write_xyz
 
 from .input_sources import DEFAULTS as INPUT_DEFAULTS, validate_input, discover, prepare_inputs
@@ -131,7 +131,12 @@ def validate_config(c, base_dir, feedback=None):
                     elevation_range_margin=50.0, block_size=512, sheet_level=5000,
                     max_sheets=100000, max_sheet_pixels=100000000, compression="DEFLATE",
                     max_pixels=1000000000, source_nodata=None,
-                    confirm_elevation_metres=False, color={}, render_mode=None, fme={})
+                    confirm_elevation_metres=False, color={}, render_mode=None, fme={},
+                    # v0.9.3: 図郭タイル出力に加えて、全域CS方式画像をVRTだけでなく
+                    # 単体のGeoTIFFとしても書き出すかどうか（ユーザー要望、
+                    # 2026-09-30。VRTは個々の図郭タイルへの参照のため、成果物を
+                    # 単独で移動・配布する用途にはGeoTIFFの方が扱いやすい）。
+                    merged_geotiff_enabled=True)
     defaults.update(XYZ_DEFAULTS)
     defaults.update(INPUT_DEFAULTS)
     unknown = set(c) - set(defaults) - {"inputs", "output_dir", "target_crs", "cell_size", "plane_zone", "color_model"}
@@ -173,6 +178,8 @@ def validate_config(c, base_dir, feedback=None):
             raise ValueError(f"Missing configuration: {name}")
     if not c["confirm_elevation_metres"]:
         raise ValueError("Confirm all source elevations use metres and the same vertical datum; then set confirm_elevation_metres=true")
+    if not isinstance(c["merged_geotiff_enabled"], bool):
+        raise ValueError("merged_geotiff_enabled must be boolean")
     for key in ("cell_size", "curvature_limit", "slope_max"):
         if not math.isfinite(c[key]) or c[key] <= 0:
             raise ValueError(f"{key} must be finite and positive")
@@ -220,6 +227,49 @@ def validate_config(c, base_dir, feedback=None):
     return c
 
 
+# GSI Notice: https://www.gsi.go.jp/LAW/heimencho.html
+# 平面直角座標系 第I系～第XIX系の原点(緯度,経度)。zoneはこの並びの1-based index。
+JPR_ZONE_ORIGINS = [(33,129.5), (33,131), (36,132+10/60), (33,133.5), (36,134+20/60),
+           (36,136), (36,137+10/60), (36,138.5), (36,139+50/60), (40,140+50/60),
+           (44,140.25), (44,142.25), (44,144.25), (26,142), (26,127.5),
+           (26,124), (26,131), (20,136), (26,154)]
+
+
+def _jpr_zone_of(srs):
+    """srs(osr.SpatialReference、投影済み)が平面直角座標系第I～XIX系のいずれかに
+    一致すればその番号(1-19)を、一致しなければNoneを返す。投影法・原点緯度経度・
+    縮尺係数・偽東距/偽北距の一致でのみ判定し、権威コード(EPSG番号)には依存しない。"""
+    if srs is None or not srs.IsProjected() or srs.GetAttrValue("PROJECTION") != "Transverse_Mercator":
+        return None
+    for number, (lat0, lon0) in enumerate(JPR_ZONE_ORIGINS, 1):
+        if all(abs(srs.GetProjParm(parm)-expected) <= 1e-8 for parm, expected in (
+                ("latitude_of_origin",lat0),("central_meridian",lon0),
+                ("scale_factor",.9999),("false_easting",0),("false_northing",0))):
+            return number
+    return None
+
+
+def infer_target_crs_from_raster(path, gdal, feedback=None):
+    """v0.9.3: 出力CRSが未指定のとき、先頭の入力ラスターファイルの実際のCRSを読み取り、
+    平面直角座標系第I～XIX系のいずれかと一致すればそのWKTを返す（ユーザー要望、
+    2026-09-30）。一致しない場合・ファイルを開けない場合・CRSが定義されていない場合は
+    静かにNoneを返す。呼び出し側（algorithm.py）がNone時に明確なエラーで停止する。
+    ラスター入力（mode=='raster'）にのみ適用し、text/lidar/forest等の非GeoTIFF系
+    入力には適用しない（それらのCRSはINPUT_CRSで別途明示されるため）。
+    未確認事項：本関数はこのモジュールのGDAL/OSR非搭載環境では未検証（テストは
+    GDAL利用可能な環境でのみ実行される）。"""
+    check_cancel(feedback)
+    ds = gdal.Open(str(path))
+    if ds is None:
+        return None
+    srs = ds.GetSpatialRef()
+    wkt = ds.GetProjection()
+    ds = None
+    if srs is None or not wkt or _jpr_zone_of(srs) is None:
+        return None
+    return wkt
+
+
 def check_sources(c, gdal, osr, feedback=None):
     target = osr.SpatialReference()
     target.SetFromUserInput(c["target_crs"])
@@ -229,23 +279,13 @@ def check_sources(c, gdal, osr, feedback=None):
         raise ValueError("Use a suitable local projected CRS, not Web/World Mercator, for terrain derivatives")
     if target.IsCompound() or target.GetAttrValue("PROJECTION") != "Transverse_Mercator":
         raise ValueError("target_crs must be a two-dimensional Japan Plane Rectangular CRS")
-    # GSI Notice: https://www.gsi.go.jp/LAW/heimencho.html
-    origins = [(33,129.5), (33,131), (36,132+10/60), (33,133.5), (36,134+20/60),
-               (36,136), (36,137+10/60), (36,138.5), (36,139+50/60), (40,140+50/60),
-               (44,140.25), (44,142.25), (44,144.25), (26,142), (26,127.5),
-               (26,124), (26,131), (20,136), (26,154)]
-    zone = None
-    for number, (lat0, lon0) in enumerate(origins, 1):
-        if all(abs(target.GetProjParm(parm)-expected) <= 1e-8 for parm, expected in (
-                ("latitude_of_origin",lat0),("central_meridian",lon0),
-                ("scale_factor",.9999),("false_easting",0),("false_northing",0))):
-            zone=number;break
+    zone = _jpr_zone_of(target)
     if zone is None:
         raise ValueError("Selected CRS is not one of Japan Plane Rectangular zones I-XIX")
     if c.get("plane_zone") is not None and c["plane_zone"] != zone:
         raise ValueError(f"target_crs is zone {zone}, but legacy plane_zone={c['plane_zone']}")
     c["plane_zone"] = zone
-    lat, lon = origins[zone-1]
+    lat, lon = JPR_ZONE_ORIGINS[zone-1]
     for parm, expected in (("latitude_of_origin", lat), ("central_meridian", lon),
                            ("scale_factor", .9999), ("false_easting", 0), ("false_northing", 0)):
         if abs(target.GetProjParm(parm)-expected) > 1e-8:
@@ -520,6 +560,25 @@ def run(c, feedback=None):
         manifest['stage']='sheet_streaming';save()
         cs_mosaic,manifest['sheets'],manifest['valid_relief_pixels']=render_sheets(
             projected_path,out,c,gdal,ogr,osr,feedback)
+        if c.get("merged_geotiff_enabled", True):
+            check_cancel(feedback)
+            manifest["stage"] = "merged_geotiff"
+            save()
+            merged_path = out / "cs_relief_merged.tif"
+            mosaic_ds = gdal.Open(cs_mosaic)
+            if mosaic_ds is None:
+                raise RuntimeError("結合GeoTIFF書き出し用のVRTを開けませんでした: " + cs_mosaic)
+            merged = gdal.Translate(str(merged_path), mosaic_ds, format="GTiff",
+                creationOptions=["TILED=YES", f"COMPRESS={c['compression']}", "BIGTIFF=IF_SAFER",
+                                 "PHOTOMETRIC=RGB", "ALPHA=YES"])
+            mosaic_ds = None
+            if merged is None:
+                raise RuntimeError("結合GeoTIFFの書き出しに失敗しました: " + str(merged_path))
+            merged.FlushCache(); merged = None
+            manifest["cs_merged_geotiff"] = "cs_relief_merged.tif"
+            report(feedback, f"Merged GeoTIFF: {merged_path}")
+        else:
+            manifest["cs_merged_geotiff"] = None
         if c.get("xyz_enabled", True):
             manifest["stage"] = "xyz"
             save()

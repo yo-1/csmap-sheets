@@ -31,6 +31,18 @@ EXTENSIONS = {'raster': {'.tif','.tiff','.img','.asc','.vrt'}, 'gsi': {'.xml','.
               'text': {'.xyz','.csv','.txt'}, 'lidar': {'.las','.laz'},
               'forest': {'.lem','.csv','.txt','.xyz','.tif','.tiff','.zip'}}
 
+# TIFFワールドファイル等、単独では入力になり得ない「同梱物」専用の拡張子。
+# フォルダー選択時はこれらを無条件で黙ってスキップしている（EXTENSIONSに
+# 含まれないため）。個別ファイル選択時のみ「Input extension does not match
+# input_type」で強制停止していたが、フォルダー経由と個別選択経由とで
+# ユーザーの体感結果が変わってしまう（同じ.tfwが混ざったフォルダを対象に
+# しても、フォルダー全体を選ぶか個別チェックボックスで選ぶかで挙動が違う）
+# のは筋が悪いため、v0.9.3でここに限り個別選択でも黙ってスキップするように
+# 統一する（ユーザー報告、2026-09-30）。あくまで「そもそも主入力になり得ない
+# 同梱物」という性質が既知の拡張子に限定し、それ以外の拡張子不一致は
+# 従来どおり明確なエラーで停止する（黙ったフォールバックの拡大はしない）。
+COMPANION_ONLY_EXTENSIONS = {'.tfw', '.tifw', '.wld'}
+
 
 def explicit_file_parameter(value):
     """Decode the raw QGIS multiple-file value without consulting layer state."""
@@ -192,6 +204,7 @@ def discover(inputs, base_dir, c, feedback=None):
                 matches = []
         if not matches:raise ValueError('No input matched: '+str(entry))
         found=0
+        companion_only=0
         for match in matches:
             match_mode = mode if match == p and mode is not None else _network_call(
                 f'入力属性確認: {match}', lambda match=match: os.stat(str(match)).st_mode, feedback)
@@ -203,6 +216,9 @@ def discover(inputs, base_dir, c, feedback=None):
             for f in items:
                 if f.suffix.lower() not in extensions:
                     if not is_directory:
+                        if f.suffix.lower() in COMPANION_ONLY_EXTENSIONS:
+                            companion_only+=1
+                            continue
                         raise ValueError('Input extension does not match input_type: '+str(f))
                     continue
                 found+=1
@@ -210,7 +226,14 @@ def discover(inputs, base_dir, c, feedback=None):
                 identity=os.path.normcase(path)
                 if identity not in seen:files.append(path);seen.add(identity)
                 if len(files)>c['max_input_files']:raise ValueError('Too many input files')
-        if not found:raise ValueError('No supported files in: '+str(entry))
+        if not found and not companion_only:raise ValueError('No supported files in: '+str(entry))
+    if not files:
+        # 個々のentryは「同梱物のみ」で有効化(companion_only>0)されたため上の
+        # per-entryチェックは通過したが、全entryを合算した結果、有効な入力が
+        # 1件も無いケース(例: .tfwだけを個別選択した場合)。ここで検出しないと
+        # 後続処理が「入力0件」のまま静かに進んでしまうため、明確なエラーで
+        # 停止する。
+        raise ValueError('No supported files found (only companion-only files such as .tfw were selected)')
     return files
 
 
