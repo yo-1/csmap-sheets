@@ -196,6 +196,44 @@ class InputTests(unittest.TestCase):
             expanded,_=forest.expand_sources([lem],root/'work')
             self.assertEqual(len(expanded),2)
 
+    LEM_HEADER = ('東西方向の点数,1\n南北方向の点数,1\n東西方向のデータ間隔,1\n'
+                  '南北方向のデータ間隔,1\n区画左下X座標,0\n区画左下Y座標,0\n'
+                  '区画右上X座標,100\n区画右上Y座標,100\n')
+
+    def test_forest_expand_sources_accepts_txt_companion_when_no_csv(self):
+        # 2026-09-30 ユーザー報告: 森林航空レーザ成果の実データでは、LEMの対応
+        # メタデータファイルの拡張子が規則上は.csvだが実態は.txtの場合が多い。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            lem=root/'06je983_1g.lem';lem.write_text(' '*6+'   1'+' 1000\r\n',encoding='ascii')
+            (root/'06je983_1g.txt').write_text(self.LEM_HEADER,encoding='cp932')
+            expanded,_=forest.expand_sources([lem],root/'work')
+            self.assertEqual(len(expanded),2)
+            records=forest.classify_sources(expanded)
+            self.assertEqual([r['kind'] for r in records],['lem'])
+
+    def test_forest_classify_sources_prefers_csv_over_txt_companion(self):
+        # 同一stemに.csvと.txtが両方存在する場合は.csvを優先する(仮定・明記)。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            lem=root/'a.lem';lem.write_text(' '*6+'   1'+' 1000\r\n',encoding='ascii')
+            csv_path=root/'a.csv';csv_path.write_text(self.LEM_HEADER,encoding='cp932')
+            txt_path=root/'a.txt';txt_path.write_text('this is not LEM metadata\n',encoding='utf-8')
+            expanded,_=forest.expand_sources([lem],root/'work')
+            self.assertIn(csv_path,expanded)
+            self.assertNotIn(txt_path,expanded)
+            records=forest.classify_sources([lem,csv_path])
+            self.assertEqual([r['kind'] for r in records],['lem'])
+
+    def test_forest_classify_sources_standalone_txt_grid_is_unaffected(self):
+        # .txtは単体のXYZグリッド入力としても使われる。LEM companion扱いにならず
+        # 従来どおりgridとして分類されることを確認する(回帰防止)。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            grid=root/'grid.txt';grid.write_text('X,Y,Z\n10,20,30\n11,20,31\n')
+            records=forest.classify_sources([grid])
+            self.assertEqual([r['kind'] for r in records],['grid'])
+
     def test_gsi_start_order_and_nodata(self):
         a,gt,crs,meta=next(gsi.parse_dem(xml()))
         np.testing.assert_array_equal(a,[[inputs.NODATA,10,0],[inputs.NODATA,inputs.NODATA,-2]])

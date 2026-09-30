@@ -1,7 +1,12 @@
 """Readers for Japanese forestry airborne-laser DEM deliverables. GPL-3.0-only.
 
-Supported products are LEM+CSV metadata pairs, XYZ/CSV regular grids,
+Supported products are LEM+CSV(or .txt) metadata pairs, XYZ/CSV regular grids,
 TIFF+world-file rasters, GeoTIFF rasters, and ZIP containers of those files.
+
+LEMの対応メタデータファイルは、規則上は.csv拡張子だが実態として.txt拡張子で
+提供される場合がある（2026-09-30 ユーザー報告）。判定は拡張子ではなく中身の
+CSV構造（is_lem_metadata）で行うため、.csv/.txtいずれの拡張子でも認識できる。
+同一stemに両方存在する場合は.csvを優先する。
 """
 import csv
 import hashlib
@@ -173,9 +178,21 @@ def expand_sources(paths, work):
             # '.CSV'等を拾えない。修正前の実装（parent.glob('*')を毎回全件走査し
             # p.suffix.lower()=='.csv'で判定）と同じ「拡張子は大文字小文字を区別しない」
             # 挙動を、キャッシュ後も保つため、ここでも glob('*') 全件から suffix.lower() で絞り込む。
-            csv_index_cache[directory] = {
-                p.stem.lower(): p for p in directory.glob('*') if p.suffix.lower() == '.csv'
-            }
+            #
+            # 森林航空レーザ成果の実データでは、LEMの対応メタデータファイルの拡張子が
+            # 規則上は.csvだが実態は.txtになっている場合が多い（2026-09-30 ユーザー報告）。
+            # is_lem_metadata()は中身のCSV構造で判定するため拡張子非依存で対応できるが、
+            # .txtは単体のXYZグリッド入力としても使われる拡張子のため、同一stemに
+            # .csvと.txtが両方存在する場合は.csvを優先する（同一ループ内で.csv側を
+            # 後勝ちで上書きすることで、glob('*')の列挙順に依存せず優先順位を保証する）。
+            entries = {}
+            for p in directory.glob('*'):
+                suffix = p.suffix.lower()
+                if suffix == '.txt':
+                    entries.setdefault(p.stem.lower(), p)
+                elif suffix == '.csv':
+                    entries[p.stem.lower()] = p
+            csv_index_cache[directory] = entries
         return csv_index_cache[directory]
     for ordinal, value in enumerate(paths, 1):
         path=Path(value)
@@ -188,15 +205,26 @@ def expand_sources(paths, work):
             if path.suffix.lower()=='.lem':
                 companion=path.with_suffix('.csv')
                 if not companion.exists():
+                    companion=path.with_suffix('.txt')
+                if not companion.exists():
                     companion=csv_index(path.parent).get(path.stem.lower(), companion)
                 if companion.exists() and companion not in expanded: expanded.append(companion)
     return expanded, archives
 
 
 def classify_sources(paths):
-    """Identify primary files and avoid treating LEM metadata CSV as an XYZ grid."""
+    """Identify primary files and avoid treating LEM metadata CSV/TXT as an XYZ grid."""
     files=[Path(p) for p in paths]
-    by_key={(p.parent, p.stem.lower()):p for p in files if p.suffix.lower()=='.csv'}
+    # companion候補は.csvと.txtの両方を対象にする（2026-09-30 ユーザー報告: 森林航空レーザ
+    # 成果の実データでは対応メタデータの拡張子が.txtの場合が多い）。同一stemに両方存在する
+    # 場合は.csvを優先する（expand_sources()のcsv_index()と同じ優先順位）。
+    by_key={}
+    for p in files:
+        suffix=p.suffix.lower()
+        if suffix=='.txt':
+            by_key.setdefault((p.parent,p.stem.lower()),p)
+        elif suffix=='.csv':
+            by_key[(p.parent,p.stem.lower())]=p
     result=[]
     for p in files:
         suffix=p.suffix.lower()
@@ -204,11 +232,11 @@ def classify_sources(paths):
         if suffix=='.lem':
             header=by_key.get((p.parent,p.stem.lower()))
             if header is None or not is_lem_metadata(header):
-                raise ValueError('LEM requires its companion metadata CSV with the same stem: '+str(p))
+                raise ValueError('LEM requires its companion metadata CSV/TXT (same stem, .csv or .txt) with LEM header fields: '+str(p))
             result.append({'kind':'lem','path':p,'metadata':header})
-        elif suffix=='.csv' and is_lem_metadata(p):
+        elif suffix in ('.csv','.txt') and is_lem_metadata(p):
             if not any(q.suffix.lower()=='.lem' and q.parent==p.parent and q.stem.lower()==p.stem.lower() for q in files):
-                raise ValueError('LEM metadata CSV has no companion .lem file: '+str(p))
+                raise ValueError('LEM metadata file (.csv/.txt) has no companion .lem file: '+str(p))
         elif suffix in ('.csv','.txt','.xyz'):
             result.append({'kind':'grid','path':p})
         elif suffix in ('.tif','.tiff'):

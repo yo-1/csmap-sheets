@@ -18,7 +18,7 @@ from .map_sheets import dimensions, cut_sheets, intersecting_sheets
 from .progress import report, check_cancel, gdal_progress, CancelledError
 from .color_fme import render_fme, rendering_record as fme_rendering_record, validate_fme_settings
 
-VERSION = "0.9.0"
+VERSION = "0.9.1"
 from .xyz_tiles import DEFAULTS as XYZ_DEFAULTS, validate_xyz, write_xyz
 
 from .input_sources import DEFAULTS as INPUT_DEFAULTS, validate_input, discover, prepare_inputs
