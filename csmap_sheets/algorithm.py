@@ -225,7 +225,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(webp_quality)
         for key,label,default,lo,hi in [
             ('XYZ_MIN','XYZ最小ズーム',12,0,24),
-            ('XYZ_MAX','XYZ最大ズーム',18,0,24),
+            ('XYZ_MAX','XYZ最大ズーム',16,0,24),
             ('XYZ_LIMIT','XYZ候補枚数の上限',100000,1,10000000)]:
             self.addParameter(QgsProcessingParameterNumber(key,label,
                 QgsProcessingParameterNumber.Integer,default,minValue=lo,maxValue=hi))
@@ -332,12 +332,11 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             from osgeo import gdal as _gdal
             from .engine.pipeline import infer_target_crs_from_raster
             probe_path=paths[0]
-            inferred_wkt=infer_target_crs_from_raster(probe_path,_gdal,feedback=feedback)
+            inferred_wkt,reason=infer_target_crs_from_raster(probe_path,_gdal,feedback=feedback)
             if inferred_wkt is None:
                 raise QgsProcessingException(
-                    '出力座標系（CRS）が未指定で、かつ入力「'+probe_path+'」のCRSから'
-                    '平面直角座標系第I～XIX系のいずれかを自動推定できませんでした。'
-                    'CRSを明示的に選択してください。')
+                    '出力座標系（CRS）が未指定で、かつ入力「'+probe_path+'」から'
+                    '自動推定できませんでした（'+reason+'）。CRSを明示的に選択してください。')
             crs=QgsCoordinateReferenceSystem(inferred_wkt)
             if not crs.isValid():
                 raise QgsProcessingException('入力から自動推定した出力座標系が無効です: '+probe_path)

@@ -9,7 +9,11 @@ XYZ_FORMATS = ('png', 'webp')
 # default 75), LOSSLESS is TRUE/FALSE (driver default FALSE). xyz_webp_lossless=True
 # keeps the v0.8.0 behaviour (LOSSLESS=TRUE) as the plugin default; quality is only
 # meaningful when xyz_webp_lossless is False.
-DEFAULTS = dict(xyz_enabled=True, xyz_min_zoom=12, xyz_max_zoom=18,
+# v0.9.4: 標準運用として最大ズーム16を採用（実データでの検証結果、2026-09-30。
+# 18のままだと広域・高解像度データで候補タイル数がxyz_max_tilesの上限を
+# 超過しやすく、しかも超過判定がCS立体図計算・結合GeoTIFF書き出しの後まで
+# 遅延するため、無駄な計算時間を招く。恒久対応は事前検証の追加を別途検討。
+DEFAULTS = dict(xyz_enabled=True, xyz_min_zoom=12, xyz_max_zoom=16,
                 xyz_max_tiles=100000, xyz_format='png',
                 xyz_webp_lossless=True, xyz_webp_quality=75)
 
@@ -80,6 +84,66 @@ def tile_range(bounds, z):
     y0 = max(0, math.floor((HALF_WORLD-north)/span))
     y1 = min(n-1, math.ceil((HALF_WORLD-south)/span)-1)
     return x0, x1, y0, y1
+
+
+def raster_bounds_3857(path, gdal, osr):
+    """任意の測地参照ラスターの範囲をEPSG:3857のbounds (west,south,east,north) として返す。
+
+    write_xyz()内のRGBA/Byte検証とは独立しており、CS立体図(render_sheets)計算を
+    開始する前に候補タイル数を見積もる目的（precheck_xyz_tile_count）でも使う。
+    """
+    src = gdal.Open(str(path))
+    if src is None:
+        raise ValueError('Raster could not be opened for XYZ extent check: ' + str(path))
+    try:
+        srs = osr.SpatialReference()
+        if not src.GetProjection() or srs.ImportFromWkt(src.GetProjection()) != 0:
+            raise ValueError('XYZ input CRS is missing or invalid')
+        merc = osr.SpatialReference()
+        merc.ImportFromEPSG(3857)
+        for crs in (srs, merc):
+            crs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+        gt = src.GetGeoTransform()
+        if gt[2] != 0 or gt[4] != 0 or gt[1] <= 0 or gt[5] >= 0:
+            raise ValueError('XYZ input must be north-up')
+        return osr.CoordinateTransformation(srs, merc).TransformBounds(
+            gt[0], gt[3]+gt[5]*src.RasterYSize,
+            gt[0]+gt[1]*src.RasterXSize, gt[3], 41)
+    finally:
+        src = None
+
+
+def estimate_candidate_tiles(bounds, min_zoom, max_zoom):
+    """指定範囲(EPSG:3857のbounds)・ズーム範囲でのXYZ候補タイル数を返す。
+
+    write_xyz()の本チェックと同じ計算式。実タイル生成前の早期見積りに使う。
+    """
+    ranges = [(z, tile_range(bounds, z)) for z in range(min_zoom, max_zoom+1)]
+    return sum(max(0, b-a+1)*max(0, d-e+1) for _, (a, b, e, d) in ranges)
+
+
+def precheck_xyz_tile_count(path, c, gdal, osr):
+    """CS立体図の計算(render_sheets、本プラグイン最重量の処理)を始める前に、
+    候補タイル数が上限(xyz_max_tiles)を超えないか検証する（フェイルファスト）。
+
+    見積りにはCS立体図と概ね同じ範囲を持つ投影済みDEM(projected_dem.vrt)を使う。
+    render_sheetsは図郭境界に合わせて範囲をわずかに拡張する場合があるため、
+    ここでの見積りは実際の候補数よりわずかに小さくなり得る。最終的な安全性は
+    write_xyz()側の本チェック（CS立体図そのものから再計算）で担保される。
+
+    xyz_enabledがFalseの場合は何もせずNoneを返す。
+    """
+    c = {**DEFAULTS, **c}
+    if not c['xyz_enabled']:
+        return None
+    bounds = raster_bounds_3857(path, gdal, osr)
+    total = estimate_candidate_tiles(bounds, c['xyz_min_zoom'], c['xyz_max_zoom'])
+    if total > c['xyz_max_tiles']:
+        raise ValueError(
+            f'XYZ candidate tiles(事前見積り)={total:,}; limit={c["xyz_max_tiles"]:,}。'
+            'CS立体図の計算を開始する前に停止しました（無駄な計算時間を避けるため）。'
+            'XYZ最大ズームを下げるか、XYZ候補枚数の上限(xyz_max_tiles)を増やしてください。')
+    return total
 
 
 def write_xyz(source, destination, c, gdal, osr, feedback=None):

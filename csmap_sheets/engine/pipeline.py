@@ -18,8 +18,8 @@ from .map_sheets import dimensions, cut_sheets, intersecting_sheets
 from .progress import report, check_cancel, gdal_progress, CancelledError
 from .color_fme import render_fme, rendering_record as fme_rendering_record, validate_fme_settings
 
-VERSION = "0.9.3"
-from .xyz_tiles import DEFAULTS as XYZ_DEFAULTS, validate_xyz, write_xyz
+VERSION = "0.9.4"
+from .xyz_tiles import DEFAULTS as XYZ_DEFAULTS, validate_xyz, write_xyz, precheck_xyz_tile_count
 
 from .input_sources import DEFAULTS as INPUT_DEFAULTS, validate_input, discover, prepare_inputs
 
@@ -252,22 +252,31 @@ def _jpr_zone_of(srs):
 def infer_target_crs_from_raster(path, gdal, feedback=None):
     """v0.9.3: 出力CRSが未指定のとき、先頭の入力ラスターファイルの実際のCRSを読み取り、
     平面直角座標系第I～XIX系のいずれかと一致すればそのWKTを返す（ユーザー要望、
-    2026-09-30）。一致しない場合・ファイルを開けない場合・CRSが定義されていない場合は
-    静かにNoneを返す。呼び出し側（algorithm.py）がNone時に明確なエラーで停止する。
-    ラスター入力（mode=='raster'）にのみ適用し、text/lidar/forest等の非GeoTIFF系
-    入力には適用しない（それらのCRSはINPUT_CRSで別途明示されるため）。
+    2026-09-30）。一致しない場合・ファイルを開けない場合・CRSが定義されていない場合は、
+    その理由を示す短い日本語文字列と共に(None, reason)を返す（v0.9.3追記、
+    2026-09-30：TIFF＋TFW(ワールドファイル)はTFW自体に座標系情報を持たないため、
+    このケースを「単に一致しなかった」場合と区別してユーザーに案内できるようにした。
+    ユーザー報告：「森林航空レーザ成果」モードでTIFF＋TFW入力を使う際、この違いが
+    分かりにくいという指摘を受けた）。呼び出し側（algorithm.py）がNone時に明確な
+    エラーで停止する。ラスター入力（mode=='raster'）にのみ適用し、text/lidar/forest
+    等の非GeoTIFF系入力には適用しない（それらのCRSはINPUT_CRSで別途明示されるため）。
     未確認事項：本関数はこのモジュールのGDAL/OSR非搭載環境では未検証（テストは
-    GDAL利用可能な環境でのみ実行される）。"""
+    GDAL利用可能な環境でのみ実行される）。
+
+    戻り値：(wkt, None) で成功、(None, reason) で失敗。"""
     check_cancel(feedback)
     ds = gdal.Open(str(path))
     if ds is None:
-        return None
+        return None, 'ファイルを開けませんでした'
     srs = ds.GetSpatialRef()
     wkt = ds.GetProjection()
     ds = None
-    if srs is None or not wkt or _jpr_zone_of(srs) is None:
-        return None
-    return wkt
+    if srs is None or not wkt:
+        return None, ('この入力にはCRS(座標系)情報がありません。TIFF＋TFW(ワールドファイル)'
+                       'はTFW自体に位置合わせ情報しか持たず、CRS情報は持ちません')
+    if _jpr_zone_of(srs) is None:
+        return None, '入力のCRSが平面直角座標系第I～XIX系のいずれとも一致しません'
+    return wkt, None
 
 
 def check_sources(c, gdal, osr, feedback=None):
@@ -555,6 +564,12 @@ def run(c, feedback=None):
         # Validate domain and sheet count before materializing a large mosaic.
         manifest["candidate_sheets"] = sum(1 for _ in intersecting_sheets(bounds,
             c["plane_zone"], c["sheet_level"], c["max_sheets"]))
+        # v0.9.4: CS立体図の計算(render_sheets、最重量の処理)を始める前に、
+        # XYZ候補タイル数が上限を超えないか事前検証する（フェイルファスト）。
+        # 超過が判明していれば、1時間超かかることもある本計算を無駄に走らせない。
+        manifest["xyz_candidate_tiles_precheck"] = precheck_xyz_tile_count(
+            str(projected_path), c, gdal, osr)
+        save()
         report(feedback, f"Projected mosaic: {projected.RasterXSize} x {projected.RasterYSize}")
         projected.FlushCache();projected=vrt=None
         manifest['stage']='sheet_streaming';save()

@@ -107,16 +107,28 @@ class JPRZoneDetectionTests(unittest.TestCase):
         lat0, lon0 = JPR_ZONE_ORIGINS[8]
         srs = StubSRS(latitude_of_origin=lat0, central_meridian=lon0)
         gdal = StubGDAL(StubDataset(srs, wkt='ZONE9_WKT'))
-        self.assertEqual(infer_target_crs_from_raster('dummy.tif', gdal), 'ZONE9_WKT')
+        wkt, reason = infer_target_crs_from_raster('dummy.tif', gdal)
+        self.assertEqual(wkt, 'ZONE9_WKT')
+        self.assertIsNone(reason)
 
     def test_infer_target_crs_from_raster_returns_none_when_unmatched(self):
         srs = StubSRS(latitude_of_origin=0, central_meridian=141)
         gdal = StubGDAL(StubDataset(srs))
-        self.assertIsNone(infer_target_crs_from_raster('dummy.tif', gdal))
+        wkt, reason = infer_target_crs_from_raster('dummy.tif', gdal)
+        self.assertIsNone(wkt)
+        self.assertIn('平面直角座標系', reason)
 
     def test_infer_target_crs_from_raster_returns_none_when_unreadable_or_no_crs(self):
-        self.assertIsNone(infer_target_crs_from_raster('dummy.tif', StubGDAL(None)))
-        self.assertIsNone(infer_target_crs_from_raster('dummy.tif', StubGDAL(StubDataset(None))))
+        wkt, reason = infer_target_crs_from_raster('dummy.tif', StubGDAL(None))
+        self.assertIsNone(wkt);self.assertIn('開けません', reason)
+        # TIFF+TFW（ワールドファイル）はCRS情報自体を持たないため、GDALで開けても
+        # GetSpatialRef()がNoneまたはGetProjection()が空文字列になる。この場合を
+        # 「一致しなかった」場合と区別できるメッセージを返すことを確認する
+        # （ユーザー報告、2026-09-30：この違いが分かりにくいという指摘）。
+        wkt, reason = infer_target_crs_from_raster('dummy.tif', StubGDAL(StubDataset(None)))
+        self.assertIsNone(wkt);self.assertIn('TFW', reason)
+        wkt, reason = infer_target_crs_from_raster('dummy.tif', StubGDAL(StubDataset(StubSRS(), wkt='')))
+        self.assertIsNone(wkt);self.assertIn('TFW', reason)
 
 
 class ReliefTests(unittest.TestCase):
