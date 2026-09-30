@@ -234,6 +234,63 @@ class InputTests(unittest.TestCase):
             records=forest.classify_sources([grid])
             self.assertEqual([r['kind'] for r in records],['grid'])
 
+    def test_is_lem_metadata_does_not_read_past_probe_bound_on_large_grid_txt(self):
+        # 2026-09-30 ユーザー報告の再発防止テスト。実データでは、LEMのcompanion
+        # メタデータとは無関係に、同じ命名規則の巨大な(最大約100MB)単体.txtグリッドが
+        # 同居するフォルダー(「txt形式」等)が存在する。is_lem_metadata()がファイル
+        # 全体を読み込んでいると、この種のファイルが多数(実例では714件)ある場合に
+        # 大量のI/O・メモリ確保が積み重なり、QGISが長時間「応答なし」になっていた。
+        # ここでは、プローブ上限を超えるファイルに対してファイル全体は読み込まれない
+        # ことを、open()呼び出しに渡されるサイズ上限を検証することで確認する。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            huge=root/'06ke081_1g.txt'
+            # 実際に大容量データを書き込まずスパースファイルで巨大サイズを再現する。
+            with open(huge,'wb') as f:
+                f.seek(forest.LEM_METADATA_PROBE_BYTES*8)
+                f.write(b'0')
+            calls=[]
+            original_open=open
+            def counting_open(path,*args,**kwargs):
+                fh=original_open(path,*args,**kwargs)
+                if str(path)==str(huge):
+                    real_read=fh.read
+                    def counting_read(size=-1,*a,**kw):
+                        calls.append(size)
+                        return real_read(size,*a,**kw)
+                    fh.read=counting_read
+                return fh
+            with patch('builtins.open',counting_open):
+                result=forest.is_lem_metadata(huge)
+            self.assertFalse(result)
+            self.assertTrue(calls)
+            self.assertLessEqual(max(calls),forest.LEM_METADATA_PROBE_BYTES)
+
+    def test_is_lem_metadata_accepts_real_size_companion_beyond_naive_estimate(self):
+        # 実機で確認された本物のLEM対応メタデータ(.csv)は数百バイトではなく最大約35KB
+        # あった。プローブ上限(256KiB)がこれを十分に上回ることを確認する回帰テスト。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            header=root/'06ne882_1g.csv'
+            # ヘッダー本体の後ろに実データを模した大量の行を追加し、合計サイズを
+            # 実測に近い約35KBまで水増しする(内容自体はパース対象外の余分な行)。
+            padding='\n'.join(f'メモ{i},{i}' for i in range(2800))
+            header.write_text(self.LEM_HEADER+padding,encoding='cp932')
+            self.assertGreater(header.stat().st_size,30000)
+            self.assertTrue(forest.is_lem_metadata(header))
+
+    def test_forest_classify_sources_large_standalone_txt_grid_is_not_metadata(self):
+        # txt形式フォルダーのような、.lem companionを伴わない大容量.txtグリッドが
+        # gridとして分類され、メタデータ判定のための全文読み込みで固まらないことを確認。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            grid=root/'06ke081_1g.txt'
+            with open(grid,'wb') as f:
+                f.seek(forest.LEM_METADATA_PROBE_BYTES*4)
+                f.write(b'0')
+            records=forest.classify_sources([grid])
+            self.assertEqual([r['kind'] for r in records],['grid'])
+
     def test_gsi_start_order_and_nodata(self):
         a,gt,crs,meta=next(gsi.parse_dem(xml()))
         np.testing.assert_array_equal(a,[[inputs.NODATA,10,0],[inputs.NODATA,inputs.NODATA,-2]])

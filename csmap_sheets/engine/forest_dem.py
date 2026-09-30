@@ -7,6 +7,15 @@ LEMの対応メタデータファイルは、規則上は.csv拡張子だが実�
 提供される場合がある（2026-09-30 ユーザー報告）。判定は拡張子ではなく中身の
 CSV構造（is_lem_metadata）で行うため、.csv/.txtいずれの拡張子でも認識できる。
 同一stemに両方存在する場合は.csvを優先する。
+
+注意：.txt拡張子は、上記のLEM対応メタデータとは無関係に、それ自体が標高値を
+含む単体のXYZ/CSVグリッドファイルとしても使われる（実データでは「txt形式」等の
+フォルダーに、.lem companionを持たない最大約100MB規模の.txtが大量に同居する
+ケースが確認されている）。そのため is_lem_metadata() はファイル全体ではなく
+先頭の固定バイト数（LEM_METADATA_PROBE_BYTES）のみを読んで判定する
+「プローブ」方式にしている。v0.9.1では全文読み込みで判定していたため、この
+種の大容量.txtが多数存在する実データでQGISが長時間「応答なし」になる回帰
+バグを引き起こしていた（v0.9.2で修正、CHANGELOG.md参照）。
 """
 import csv
 import hashlib
@@ -37,9 +46,20 @@ def _key(value):
     return re.sub(r'[\s　_()（）・]+', '', value).lower()
 
 
-def read_lem_metadata(path):
-    """Read the companion CSV header defined for LEM mesh elevation files."""
-    text, encoding = _decode(Path(path).read_bytes())
+# LEMメタデータ候補の判定(is_lem_metadata)に読み込むバイト数の上限。実測した本物の
+# メタデータCSV(companion)は最大でも数十KB程度だったが、森林航空レーザ成果の実データには
+# 同じ命名規則で最大約100MBに達する単体の.txtグリッドファイルが同居するフォルダー
+# (「txt形式」等)が存在することが判明した(2026-09-30 ユーザー報告)。これらは.lem companion
+# ではなく、それ自体が標高値を含む独立したテキストグリッドであり、メタデータ判定のために
+# ファイル全体を読み込むと、大量の大容量ファイルに対してI/O・メモリ確保が積み重なり、
+# QGISが長時間「応答なし」になる不具合が実際に発生した。そのため判定は先頭の一定バイト数
+# だけを読む「プローブ」方式に変更する。実測の本物メタデータ(最大約35KB)に対して十分な
+# 余裕(約7倍)を持たせた値。
+LEM_METADATA_PROBE_BYTES = 262144  # 256 KiB
+
+
+def _parse_metadata_fields(text, path):
+    """Extract the aliased LEM header fields from already-decoded CSV text."""
     result = {}
     for row in csv.reader(text.splitlines()):
         if len(row) >= 2 and row[0].strip():
@@ -69,13 +89,50 @@ def read_lem_metadata(path):
         if name in values: values[name] = int(float(values[name]))
     for name in ('dx', 'dy', 'south_n', 'west_e', 'north_n', 'east_e'):
         values[name] = float(values[name])
+    return values
+
+
+def read_lem_metadata(path):
+    """Read the companion CSV header defined for LEM mesh elevation files.
+
+    Reads the whole file. Call only on a file already confirmed (via
+    is_lem_metadata()) to be a small metadata companion, not on an arbitrary
+    candidate that might be a large text grid.
+    """
+    text, encoding = _decode(Path(path).read_bytes())
+    values = _parse_metadata_fields(text, path)
     values['encoding'] = encoding
     return values
 
 
+def _decode_head(path, max_bytes=LEM_METADATA_PROBE_BYTES):
+    """Decode only the leading max_bytes of a file.
+
+    Drops a possibly-truncated final line so a cut multi-byte sequence or an
+    incomplete row doesn't corrupt decoding. Used to test LEM-metadata
+    candidacy without reading an entire, potentially very large, file.
+    """
+    with open(path, 'rb') as f:
+        chunk = f.read(max_bytes)
+    if len(chunk) == max_bytes:
+        cut = chunk.rfind(b'\n')
+        if cut > 0:
+            chunk = chunk[:cut]
+    return _decode(chunk)
+
+
 def is_lem_metadata(path):
+    """Cheaply test whether `path` looks like a LEM companion metadata file.
+
+    Reads only a bounded leading chunk (LEM_METADATA_PROBE_BYTES), not the
+    whole file -- see the module-level comment on that constant for why.
+    仮定：本物のメタデータの必須フィールドは、このプローブ範囲内(先頭256KiB)に
+    収まっている。この前提を超える巨大な本物メタデータが将来出てきた場合は、
+    grid扱いに誤判定される(未確認の残存リスク)。
+    """
     try:
-        metadata = read_lem_metadata(path)
+        text, _ = _decode_head(path)
+        metadata = _parse_metadata_fields(text, path)
         return metadata['nx'] > 0 and metadata['ny'] > 0
     except (OSError, UnicodeError, ValueError, csv.Error):
         return False
