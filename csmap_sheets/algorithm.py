@@ -331,7 +331,15 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 raise QgsProcessingException('入力ファイルまたはフォルダーを指定してください。')
             from osgeo import gdal as _gdal
             from .engine.pipeline import infer_target_crs_from_raster
-            probe_path=paths[0]
+            from .engine.input_sources import crs_probe_raster
+            try:
+                probe_path=crs_probe_raster(paths[0],self.parameterAsBool(parameters,'RECURSIVE',context),feedback)
+            except ValueError as exc:
+                raise QgsProcessingException(
+                    '出力座標系（CRS）が未指定で、入力「'+paths[0]+'」から自動推定に使える'
+                    'ラスターファイルが見つかりませんでした（'+str(exc)+'）。CRSを明示的に選択してください。')
+            if probe_path!=paths[0]:
+                feedback.pushInfo('入力フォルダー内の先頭のラスターファイルで出力座標系を推定します: '+probe_path)
             inferred_wkt,reason=infer_target_crs_from_raster(probe_path,_gdal,feedback=feedback)
             if inferred_wkt is None:
                 raise QgsProcessingException(
