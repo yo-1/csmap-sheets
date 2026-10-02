@@ -632,7 +632,7 @@ PSS版（FMEワークスペース）の`RasterSlopeCalculator`は`ALGORITHM="Hor
 - 既定値・不正値の拒否・記録内容（`terrain_calculation.slope_algorithm`）。
 
 テスト結果（GDAL/PDAL/QGISなし、Python 3.12、numpy・scipy）:
-`python -m unittest discover -s csmap_sheets/tests -t .` → 120件実行、失敗0、スキップ13
+`python -m unittest discover -s csmap_sheets/tests -t .` → 121件実行、失敗0、スキップ13
 （スキップ分は環境依存で未実行）。
 
 まだ未確認・未実施:
