@@ -611,7 +611,8 @@ v0.10.0 — 傾斜計算方式の選択（既定をHorn法に変更）（2026-10
     `run.json`の`settings`とGeoTIFFの`SETTINGS`メタデータには設定JSONごと記録される。
 (3) `algorithm.py`：詳細パラメータ`SLOPE_ALGORITHM`（既定Horn法）を追加。組込みプロファイルは
     この選択を上書きしない。`slope_algorithm`を持たない外部JSONプロファイルでは画面の選択が
-    使われる。開始時にログへ「傾斜計算方式: Horn法／中央差分法」を出力する。
+    使われ、その旨と中央差分法で再現できることを警告としてログに出す。パラメータは既定動作の変更に
+    気づけるよう通常の項目として表示する。開始時にログへ「傾斜計算方式: Horn法／中央差分法」を出力する。
 
 PSS版との関係:
 PSS版（FMEワークスペース）の`RasterSlopeCalculator`は`ALGORITHM="Horn"`を選んでいるが、

@@ -174,7 +174,6 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         slope_algorithm=QgsProcessingParameterEnum('SLOPE_ALGORITHM','傾斜計算のアルゴリズム',
             ['Horn法（推奨・既定。3×3加重差分）',
              '中央差分法（従来互換。v0.9.4以前の既定）'],defaultValue=0)
-        slope_algorithm.setFlags(slope_algorithm.flags() | Qgis.ProcessingParameterFlag.Advanced)
         self.addParameter(slope_algorithm)
         self.addParameter(QgsProcessingParameterBoolean('ELEV_AUTO',
             '標高色の下限/上限を自動検出する（対象範囲の実際の標高min/maxに'
@@ -464,9 +463,13 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 c['render_mode']='independent_v040'
                 feedback.pushInfo('旧設定プロファイルのため、従来の色合成方式で再現します。')
             feedback.pushInfo('設定プロファイルを読み込みました: '+profile_path)
+            from .engine.pipeline import missing_slope_algorithm_notice
+            notice=missing_slope_algorithm_notice(saved,c['slope_algorithm'])
+            if notice:feedback.pushWarning(notice)
         try:self.settings=validate_config(c,Path.cwd(),feedback=feedback)
         except (ValueError,TypeError,OSError) as exc:raise QgsProcessingException(str(exc)) from exc
-        feedback.pushInfo('傾斜計算方式: '+{'horn':'Horn法','central_difference':'中央差分法'}[self.settings['slope_algorithm']])
+        from .engine.pipeline import SLOPE_ALGORITHM_NAMES
+        feedback.pushInfo('傾斜計算方式: '+SLOPE_ALGORITHM_NAMES[self.settings['slope_algorithm']])
         save_value=parameters.get('SAVE_PROFILE')
         if not QgsVariantUtils.isNull(save_value) and str(save_value).strip():
             save_path=Path(self.parameterAsFileOutput(parameters,'SAVE_PROFILE',context))

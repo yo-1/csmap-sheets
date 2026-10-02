@@ -54,6 +54,18 @@ def color_settings(settings=None):
 
 
 SLOPE_ALGORITHMS = ('horn', 'central_difference')
+SLOPE_ALGORITHM_NAMES = {'horn': 'Horn法', 'central_difference': '中央差分法'}
+
+
+def missing_slope_algorithm_notice(saved, chosen):
+    """Warning text when a loaded profile predates slope_algorithm (v0.9.4 and
+    earlier), else None. Those profiles were produced with central differences,
+    so silently applying the new Horn default would change colours unnoticed."""
+    if 'slope_algorithm' in saved:
+        return None
+    return ('この設定プロファイルには傾斜計算方式（slope_algorithm）の指定がないため、'
+            f'画面で選択中の{SLOPE_ALGORITHM_NAMES[chosen]}を使います。v0.9.4以前の出力を'
+            '再現する場合は「傾斜計算のアルゴリズム」で中央差分法を選んでください。')
 
 
 def slope_gradients(raw, cell, slope_algorithm='horn'):

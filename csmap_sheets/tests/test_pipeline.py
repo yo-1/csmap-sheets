@@ -54,6 +54,14 @@ class ConfigDefaultsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'slope_algorithm must be one of'):
             validate_config(self.base_config(slope_algorithm='bogus'), Path.cwd())
 
+    def test_missing_slope_algorithm_notice_only_for_old_profiles(self):
+        from csmap_sheets.engine.pipeline import missing_slope_algorithm_notice
+        notice = missing_slope_algorithm_notice({'sigma_m': 3.0}, 'horn')
+        self.assertIn('Horn法', notice)
+        self.assertIn('中央差分法', notice)
+        self.assertIn('中央差分法を使います', missing_slope_algorithm_notice({}, 'central_difference'))
+        self.assertIsNone(missing_slope_algorithm_notice({'slope_algorithm': 'horn'}, 'horn'))
+
 
 class StubSRS:
     """osr.SpatialReferenceの必要最小限のダック型スタブ。この開発環境には
