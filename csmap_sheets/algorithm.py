@@ -90,7 +90,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         profile=self.addParameter(QgsProcessingParameterEnum('PROFILE','設定プロファイル',
             ['画面の設定を使用','標準CS・1m（FMEマニュアル方式、曲率±0.1）',
              '試験処理・2m（FMEマニュアル方式、曲率±0.1）',
-             '林野庁調整・暫定・1m（曲率±0.03）','外部JSONプロファイル'],defaultValue=0))
+             '林野庁近似設定（暫定）・1m（曲率±0.03）','外部JSONプロファイル'],defaultValue=0))
         profile_file=QgsProcessingParameterFile('PROFILE_FILE','読込む設定プロファイル（JSON）',
             extension='json',optional=True)
         profile_file.setFlags(profile_file.flags() | Qgis.ProcessingParameterFlag.Advanced);self.addParameter(profile_file)
@@ -165,12 +165,16 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             ('SIGMA','曲率用平滑化の標準偏差（m）',3.,0.,1000.),
             ('CURVE_LIMIT','曲率色の飽和値（±、1/m。FME資料の「±10」に対応する値。'
              '同梱FMWのKERNEL_DIVISOR=cell_size²×0.01から換算・確認済み）',.1,.000001,100.),
-            ('SLOPE_MAX','傾斜の暗さが飽和する角度',60.,.1,90.),
+            ('SLOPE_MAX','傾斜の暗さが飽和する角度（度。色調の設定であり、傾斜の計算方式とは別）',60.,.1,90.),
             ('ELEV_MIN','標高色の下限（m）',200.,-10000.,10000.),
             ('ELEV_MAX','標高色の上限（m）',2000.,-10000.,10000.),
         ]:
             self.addParameter(QgsProcessingParameterNumber(name,label,
                 QgsProcessingParameterNumber.Double,value,minValue=lo,maxValue=hi))
+        slope_algorithm=QgsProcessingParameterEnum('SLOPE_ALGORITHM','傾斜計算のアルゴリズム',
+            ['Horn法（推奨・既定。3×3加重差分）',
+             '中央差分法（従来互換。v0.9.4以前の既定）'],defaultValue=0)
+        self.addParameter(slope_algorithm)
         self.addParameter(QgsProcessingParameterBoolean('ELEV_AUTO',
             '標高色の下限/上限を自動検出する（対象範囲の実際の標高min/maxに'
             '下記の余白を加えて使用。ELEV_MIN/ELEV_MAXの数値は無視されます）',
@@ -331,7 +335,15 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 raise QgsProcessingException('入力ファイルまたはフォルダーを指定してください。')
             from osgeo import gdal as _gdal
             from .engine.pipeline import infer_target_crs_from_raster
-            probe_path=paths[0]
+            from .engine.input_sources import crs_probe_raster
+            try:
+                probe_path=crs_probe_raster(paths[0],self.parameterAsBool(parameters,'RECURSIVE',context),feedback)
+            except ValueError as exc:
+                raise QgsProcessingException(
+                    '出力座標系（CRS）が未指定で、入力「'+paths[0]+'」から自動推定に使える'
+                    'ラスターファイルが見つかりませんでした（'+str(exc)+'）。CRSを明示的に選択してください。')
+            if probe_path!=paths[0]:
+                feedback.pushInfo('入力フォルダー内の先頭のラスターファイルで出力座標系を推定します: '+probe_path)
             inferred_wkt,reason=infer_target_crs_from_raster(probe_path,_gdal,feedback=feedback)
             if inferred_wkt is None:
                 raise QgsProcessingException(
@@ -398,6 +410,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             sigma_m=self.parameterAsDouble(parameters,'SIGMA',context),
             curvature_limit=self.parameterAsDouble(parameters,'CURVE_LIMIT',context),
             slope_max=self.parameterAsDouble(parameters,'SLOPE_MAX',context),
+            slope_algorithm=['horn','central_difference'][self.parameterAsEnum(parameters,'SLOPE_ALGORITHM',context)],
             elevation_range=[self.parameterAsDouble(parameters,'ELEV_MIN',context),
                              self.parameterAsDouble(parameters,'ELEV_MAX',context)],
             elevation_range_auto=self.parameterAsBool(parameters,'ELEV_AUTO',context),
@@ -420,16 +433,20 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             c[key]=self.parameterAsDouble(parameters,key.upper(),context)
         profile_choice=self.parameterAsEnum(parameters,'PROFILE',context)
         if profile_choice in (1,2):
+            # 傾斜計算アルゴリズム(SLOPE_ALGORITHM)はプロファイルで上書きせず、
+            # 利用者の選択（既定Horn法）をそのまま使う（v0.10.0、ユーザー決定）。
             c.update(cell_size=1. if profile_choice==1 else 2.,sigma_m=3.,curvature_limit=.1,
-                     slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,render_mode='fme_manual',fme=fme)
+                     slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,
+                     render_mode='fme_manual',fme=fme)
             feedback.pushInfo('組込み設定プロファイルを適用しました: '+('標準CS・1m' if profile_choice==1 else '試験処理・2m'))
         elif profile_choice==3:
-            # Separate, opt-in value relayed verbally by a 林野庁 (Forestry Agency) staff
-            # member - not the manual's own figure. Never overwrites the FME manual default
+            # Separate, opt-in provisional value (not the manual's own figure).
+            # Never overwrites the FME manual default
             # (profile_choice 1/2) silently; the person must choose this profile explicitly.
             c.update(cell_size=1.,sigma_m=3.,curvature_limit=.03,
-                     slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,render_mode='fme_manual',fme=fme)
-            feedback.pushInfo('組込み設定プロファイルを適用しました: 林野庁調整・暫定（曲率±0.03）')
+                     slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,
+                     render_mode='fme_manual',fme=fme)
+            feedback.pushInfo('組込み設定プロファイルを適用しました: 林野庁近似設定（暫定）（曲率±0.03）')
         elif profile_choice==4:
             profile_path=self.parameterAsFile(parameters,'PROFILE_FILE',context)
             if not profile_path:raise QgsProcessingException('外部JSONプロファイルを選択してください。')
@@ -446,8 +463,13 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 c['render_mode']='independent_v040'
                 feedback.pushInfo('旧設定プロファイルのため、従来の色合成方式で再現します。')
             feedback.pushInfo('設定プロファイルを読み込みました: '+profile_path)
+            from .engine.pipeline import missing_slope_algorithm_notice
+            notice=missing_slope_algorithm_notice(saved,c['slope_algorithm'])
+            if notice:feedback.pushWarning(notice)
         try:self.settings=validate_config(c,Path.cwd(),feedback=feedback)
         except (ValueError,TypeError,OSError) as exc:raise QgsProcessingException(str(exc)) from exc
+        from .engine.pipeline import SLOPE_ALGORITHM_NAMES
+        feedback.pushInfo('傾斜計算方式: '+SLOPE_ALGORITHM_NAMES[self.settings['slope_algorithm']])
         save_value=parameters.get('SAVE_PROFILE')
         if not QgsVariantUtils.isNull(save_value) and str(save_value).strip():
             save_path=Path(self.parameterAsFileOutput(parameters,'SAVE_PROFILE',context))
