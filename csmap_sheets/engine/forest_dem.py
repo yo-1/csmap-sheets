@@ -9,12 +9,12 @@ CSV構造（is_lem_metadata）で行うため、.csv/.txtいずれの拡張子�
 同一stemに両方存在する場合は.csvを優先する。
 
 注意：.txt拡張子は、上記のLEM対応メタデータとは無関係に、それ自体が標高値を
-含む単体のXYZ/CSVグリッドファイルとしても使われる（実データでは「txt形式」等の
+含む単体のXYZ/CSVグリッドファイルとしても使われる（検証用データでは「txt形式」等の
 フォルダーに、.lem companionを持たない最大約100MB規模の.txtが大量に同居する
 ケースが確認されている）。そのため is_lem_metadata() はファイル全体ではなく
 先頭の固定バイト数（LEM_METADATA_PROBE_BYTES）のみを読んで判定する
 「プローブ」方式にしている。v0.9.1では全文読み込みで判定していたため、この
-種の大容量.txtが多数存在する実データでQGISが長時間「応答なし」になる回帰
+種の大容量.txtが多数存在する検証用データでQGISが長時間「応答なし」になる回帰
 バグを引き起こしていた（v0.9.2で修正、CHANGELOG.md参照）。
 """
 import csv
@@ -47,7 +47,7 @@ def _key(value):
 
 
 # LEMメタデータ候補の判定(is_lem_metadata)に読み込むバイト数の上限。実測した本物の
-# メタデータCSV(companion)は最大でも数十KB程度だったが、森林航空レーザ成果の実データには
+# メタデータCSV(companion)は最大でも数十KB程度だったが、森林航空レーザ成果のデータには
 # 同じ命名規則で最大約100MBに達する単体の.txtグリッドファイルが同居するフォルダー
 # (「txt形式」等)が存在することが判明した(2026-09-30 ユーザー報告)。これらは.lem companion
 # ではなく、それ自体が標高値を含む独立したテキストグリッドであり、メタデータ判定のために
@@ -236,7 +236,7 @@ def expand_sources(paths, work):
             # p.suffix.lower()=='.csv'で判定）と同じ「拡張子は大文字小文字を区別しない」
             # 挙動を、キャッシュ後も保つため、ここでも glob('*') 全件から suffix.lower() で絞り込む。
             #
-            # 森林航空レーザ成果の実データでは、LEMの対応メタデータファイルの拡張子が
+            # 森林航空レーザ成果のデータでは、LEMの対応メタデータファイルの拡張子が
             # 規則上は.csvだが実態は.txtになっている場合が多い（2026-09-30 ユーザー報告）。
             # is_lem_metadata()は中身のCSV構造で判定するため拡張子非依存で対応できるが、
             # .txtは単体のXYZグリッド入力としても使われる拡張子のため、同一stemに
@@ -273,7 +273,7 @@ def classify_sources(paths):
     """Identify primary files and avoid treating LEM metadata CSV/TXT as an XYZ grid."""
     files=[Path(p) for p in paths]
     # companion候補は.csvと.txtの両方を対象にする（2026-09-30 ユーザー報告: 森林航空レーザ
-    # 成果の実データでは対応メタデータの拡張子が.txtの場合が多い）。同一stemに両方存在する
+    # 成果のデータでは対応メタデータの拡張子が.txtの場合が多い）。同一stemに両方存在する
     # 場合は.csvを優先する（expand_sources()のcsv_index()と同じ優先順位）。
     by_key={}
     for p in files:
