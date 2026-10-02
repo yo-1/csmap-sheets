@@ -237,6 +237,18 @@ def discover(inputs, base_dir, c, feedback=None):
     return files
 
 
+def crs_probe_raster(path, recursive, feedback=None):
+    """出力CRSの自動推定に使うラスターファイルを返す。
+
+    入力フォルダーが指定された場合は、パイプライン本体と同じ discover() で
+    列挙した先頭のラスターファイル（パスの小文字順）を返す。フォルダーを
+    そのまま gdal.Open に渡すと開けず、自動推定が必ず失敗していたため。
+    対象ファイルが無い場合は discover() の ValueError をそのまま送出する。"""
+    if not Path(path).is_dir():return str(path)
+    c={**DEFAULTS,'input_type':'raster','recursive':bool(recursive)}
+    return discover([str(path)],str(Path(path).parent),c,feedback)[0]
+
+
 def crs_of(value, osr):
     crs=osr.SpatialReference()
     if not value or crs.SetFromUserInput(value)!=0:raise ValueError('Invalid/missing input CRS: '+value)

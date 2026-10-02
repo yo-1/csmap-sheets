@@ -430,6 +430,28 @@ class InputTests(unittest.TestCase):
             def Open(self,path):raise AssertionError('must not open')
         self.assertEqual(inputs.mask_forest_nodata_codes('a.tif','b.tif',(),None,NoGDAL()),('a.tif',None,0))
 
+    def test_crs_probe_raster_returns_file_unchanged(self):
+        self.assertEqual(inputs.crs_probe_raster('dem.tif',True),'dem.tif')
+
+    def test_crs_probe_raster_picks_first_raster_in_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            (root/'b.tif').touch();(root/'A.TIF').touch();(root/'a.tfw').touch()
+            self.assertEqual(Path(inputs.crs_probe_raster(root,False)).name,'A.TIF')
+
+    def test_crs_probe_raster_respects_recursive_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'sub').mkdir();(root/'sub'/'dem.tif').touch()
+            self.assertEqual(Path(inputs.crs_probe_raster(root,True)).name,'dem.tif')
+            with self.assertRaises(ValueError):inputs.crs_probe_raster(root,False)
+
+    def test_crs_probe_raster_rejects_folder_without_raster(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'readme.txt').touch()
+            with self.assertRaises(ValueError):inputs.crs_probe_raster(root,True)
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):inputs.crs_probe_raster(tmp,True)
+
 
 @unittest.skipUnless(importlib.util.find_spec('osgeo'),'GDAL unavailable')
 class GDALInputTests(unittest.TestCase):
