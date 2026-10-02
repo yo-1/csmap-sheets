@@ -23,6 +23,39 @@ class XYZTests(unittest.TestCase):
         north=6378137*np.log(np.tan(np.pi/4+np.deg2rad(35)/2))
         self.assertEqual(tile_range((east,north,east+1,north+1),2),(3,3,1,1))
 
+    def test_estimate_candidate_tiles_matches_manual_sum(self):
+        h = HALF_WORLD
+        bounds = (-h, -h, h, h)
+        manual = sum(estimate_candidate_tiles(bounds, z, z) for z in range(0, 4))
+        self.assertEqual(estimate_candidate_tiles(bounds, 0, 3), manual)
+        self.assertEqual(estimate_candidate_tiles(bounds, 2, 2), 16)
+
+    def test_default_max_zoom_is_16(self):
+        # v0.9.4: 実データ検証の結果、標準運用のXYZ最大ズームは16とする。
+        self.assertEqual(DEFAULTS['xyz_max_zoom'], 16)
+
+    def test_precheck_xyz_tile_count_integration(self):
+        try: from osgeo import gdal, osr
+        except ImportError: self.skipTest('GDAL runtime unavailable')
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); src = root/'projected_dem.vrt'
+            ds = gdal.GetDriverByName('GTiff').Create(str(root/'dem.tif'), 256, 256, 1, gdal.GDT_Float32)
+            h = HALF_WORLD; ds.SetGeoTransform((-h, h/256, 0, h, 0, -h/256))
+            crs = osr.SpatialReference(); crs.ImportFromEPSG(3857); ds.SetProjection(crs.ExportToWkt())
+            ds.GetRasterBand(1).Fill(100.0)
+            ds = None
+            gdal.Translate(str(src), str(root/'dem.tif'), format='VRT')
+            # 十分小さいズーム範囲なら通過し、候補数を返す。
+            total = precheck_xyz_tile_count(str(src), {**DEFAULTS, 'xyz_min_zoom': 0, 'xyz_max_zoom': 2}, gdal, osr)
+            self.assertEqual(total, estimate_candidate_tiles((-h, -h, h, h), 0, 2))
+            # 上限を明らかに超えるズーム範囲・上限値なら、CS立体図計算を待たずに例外。
+            with self.assertRaises(ValueError):
+                precheck_xyz_tile_count(str(src), {**DEFAULTS, 'xyz_min_zoom': 0, 'xyz_max_zoom': 10,
+                                                    'xyz_max_tiles': 1}, gdal, osr)
+            # xyz_enabled=Falseなら範囲を開かずNoneを返す（存在しないパスでも例外にならない）。
+            self.assertIsNone(precheck_xyz_tile_count(
+                str(root/'does_not_exist.vrt'), {**DEFAULTS, 'xyz_enabled': False}, gdal, osr))
+
     def test_settings(self):
         validate_xyz(DEFAULTS)
         validate_xyz({**DEFAULTS, 'xyz_format': 'webp'})

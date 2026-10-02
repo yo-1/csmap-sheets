@@ -31,7 +31,7 @@ class QgisTests(unittest.TestCase):
         # WebPは既定で可逆(lossless)。非可逆(lossy)はユーザー要望により選択制で追加(2026-09-28)。
         self.assertEqual(alg.parameterDefinition('XYZ_WEBP_LOSSLESS').defaultValue(),True)
         self.assertEqual(alg.parameterDefinition('XYZ_WEBP_QUALITY').defaultValue(),75)
-        # PROFILE must keep the FME-manual and 林野庁-tuned curvature figures as separate,
+        # PROFILE must keep the FME-manual and provisional ±0.03 curvature figures as separate,
         # clearly-labelled choices (2026-09-20/24 decisions), not merged into one default.
         options=alg.parameterDefinition('PROFILE').options()
         self.assertEqual(len(options),5)

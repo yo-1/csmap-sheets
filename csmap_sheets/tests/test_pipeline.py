@@ -5,7 +5,8 @@ from pathlib import Path
 import tempfile
 import unittest
 import numpy as np
-from csmap_sheets.engine.pipeline import relief, run, read_config, validate_config
+from csmap_sheets.engine.pipeline import (relief, run, read_config, validate_config,
+    _jpr_zone_of, infer_target_crs_from_raster, JPR_ZONE_ORIGINS)
 
 
 class ConfigDefaultsTests(unittest.TestCase):
@@ -33,6 +34,119 @@ class ConfigDefaultsTests(unittest.TestCase):
         c = validate_config(self.base_config(render_mode='fme_manual'), Path.cwd())
         self.assertEqual(c['curvature_limit'], 0.1)
         self.assertEqual(c['elevation_range'], [200.0, 2000.0])
+
+    def test_merged_geotiff_enabled_defaults_true_and_is_type_checked(self):
+        # v0.9.3: 図郭タイルに加えて全域CS方式画像を結合済み1枚のGeoTIFFとしても
+        # 出力する設定（ユーザー要望、2026-09-30）。既定は有効、かつbool以外を
+        # 与えた場合は明確なエラーで停止することを確認する。
+        c = validate_config(self.base_config(), Path.cwd())
+        self.assertIs(c['merged_geotiff_enabled'], True)
+        with self.assertRaisesRegex(ValueError, 'merged_geotiff_enabled must be boolean'):
+            validate_config(self.base_config(merged_geotiff_enabled='yes'), Path.cwd())
+
+    def test_slope_algorithm_defaults_to_horn_and_is_validated(self):
+        # v0.10.0: 傾斜計算アルゴリズムの選択（ユーザー決定、2026-10-02）。既定値はHorn法とし、
+        # 中央差分法(v0.9.4以前の既定)は明示指定時のみ使う。
+        c = validate_config(self.base_config(), Path.cwd())
+        self.assertEqual(c['slope_algorithm'], 'horn')
+        c2 = validate_config(self.base_config(slope_algorithm='central_difference'), Path.cwd())
+        self.assertEqual(c2['slope_algorithm'], 'central_difference')
+        with self.assertRaisesRegex(ValueError, 'slope_algorithm must be one of'):
+            validate_config(self.base_config(slope_algorithm='bogus'), Path.cwd())
+
+    def test_missing_slope_algorithm_notice_only_for_old_profiles(self):
+        from csmap_sheets.engine.pipeline import missing_slope_algorithm_notice
+        notice = missing_slope_algorithm_notice({'sigma_m': 3.0}, 'horn')
+        self.assertIn('Horn法', notice)
+        self.assertIn('中央差分法', notice)
+        self.assertIn('中央差分法を使います', missing_slope_algorithm_notice({}, 'central_difference'))
+        self.assertIsNone(missing_slope_algorithm_notice({'slope_algorithm': 'horn'}, 'horn'))
+
+
+class StubSRS:
+    """osr.SpatialReferenceの必要最小限のダック型スタブ。この開発環境には
+    osgeo(GDAL/OSR)自体が入っていないため、_jpr_zone_of()の純粋な数値照合
+    ロジックだけを、実GDALなしで検証する。"""
+    def __init__(self, projection='Transverse_Mercator', **parms):
+        self._projection = projection
+        self._parms = dict(scale_factor=.9999, false_easting=0, false_northing=0, **parms)
+
+    def IsProjected(self):
+        return True
+
+    def GetAttrValue(self, key):
+        return self._projection if key == 'PROJECTION' else None
+
+    def GetProjParm(self, name):
+        return self._parms.get(name, float('nan'))
+
+
+class StubDataset:
+    def __init__(self, srs, wkt='STUB_WKT'):
+        self._srs = srs
+        self._wkt = wkt
+
+    def GetSpatialRef(self):
+        return self._srs
+
+    def GetProjection(self):
+        return self._wkt
+
+
+class StubGDAL:
+    def __init__(self, dataset):
+        self._dataset = dataset
+
+    def Open(self, path):
+        return self._dataset
+
+
+class JPRZoneDetectionTests(unittest.TestCase):
+    """v0.9.3: 出力CRS未指定時に入力ラスターのCRSから第I～XIX系を自動推定する
+    機能の回帰テスト（ユーザー要望、2026-09-30）。"""
+
+    def test_zone_ix_origin_matches_known_default(self):
+        # 従来のデフォルト値EPSG:6677は第IX系であることをコード内の対応関係
+        # (JPR_ZONE_ORIGINSの並び)から確認する。
+        lat0, lon0 = JPR_ZONE_ORIGINS[8]
+        srs = StubSRS(latitude_of_origin=lat0, central_meridian=lon0)
+        self.assertEqual(_jpr_zone_of(srs), 9)
+
+    def test_non_transverse_mercator_is_not_a_zone(self):
+        srs = StubSRS(projection='Mercator_1SP')
+        self.assertIsNone(_jpr_zone_of(srs))
+
+    def test_transverse_mercator_with_unmatched_origin_is_not_a_zone(self):
+        # UTM等、Transverse_Mercatorだが第I～XIX系のいずれの原点とも一致しない場合。
+        srs = StubSRS(latitude_of_origin=0, central_meridian=141)
+        self.assertIsNone(_jpr_zone_of(srs))
+
+    def test_infer_target_crs_from_raster_returns_wkt_when_zone_matches(self):
+        lat0, lon0 = JPR_ZONE_ORIGINS[8]
+        srs = StubSRS(latitude_of_origin=lat0, central_meridian=lon0)
+        gdal = StubGDAL(StubDataset(srs, wkt='ZONE9_WKT'))
+        wkt, reason = infer_target_crs_from_raster('dummy.tif', gdal)
+        self.assertEqual(wkt, 'ZONE9_WKT')
+        self.assertIsNone(reason)
+
+    def test_infer_target_crs_from_raster_returns_none_when_unmatched(self):
+        srs = StubSRS(latitude_of_origin=0, central_meridian=141)
+        gdal = StubGDAL(StubDataset(srs))
+        wkt, reason = infer_target_crs_from_raster('dummy.tif', gdal)
+        self.assertIsNone(wkt)
+        self.assertIn('平面直角座標系', reason)
+
+    def test_infer_target_crs_from_raster_returns_none_when_unreadable_or_no_crs(self):
+        wkt, reason = infer_target_crs_from_raster('dummy.tif', StubGDAL(None))
+        self.assertIsNone(wkt);self.assertIn('開けません', reason)
+        # TIFF+TFW（ワールドファイル）はCRS情報自体を持たないため、GDALで開けても
+        # GetSpatialRef()がNoneまたはGetProjection()が空文字列になる。この場合を
+        # 「一致しなかった」場合と区別できるメッセージを返すことを確認する
+        # （ユーザー報告、2026-09-30：この違いが分かりにくいという指摘）。
+        wkt, reason = infer_target_crs_from_raster('dummy.tif', StubGDAL(StubDataset(None)))
+        self.assertIsNone(wkt);self.assertIn('TFW', reason)
+        wkt, reason = infer_target_crs_from_raster('dummy.tif', StubGDAL(StubDataset(StubSRS(), wkt='')))
+        self.assertIsNone(wkt);self.assertIn('TFW', reason)
 
 
 class ReliefTests(unittest.TestCase):

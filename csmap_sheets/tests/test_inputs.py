@@ -196,6 +196,101 @@ class InputTests(unittest.TestCase):
             expanded,_=forest.expand_sources([lem],root/'work')
             self.assertEqual(len(expanded),2)
 
+    LEM_HEADER = ('東西方向の点数,1\n南北方向の点数,1\n東西方向のデータ間隔,1\n'
+                  '南北方向のデータ間隔,1\n区画左下X座標,0\n区画左下Y座標,0\n'
+                  '区画右上X座標,100\n区画右上Y座標,100\n')
+
+    def test_forest_expand_sources_accepts_txt_companion_when_no_csv(self):
+        # 2026-09-30 ユーザー報告: 森林航空レーザ成果の実データでは、LEMの対応
+        # メタデータファイルの拡張子が規則上は.csvだが実態は.txtの場合が多い。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            lem=root/'06je983_1g.lem';lem.write_text(' '*6+'   1'+' 1000\r\n',encoding='ascii')
+            (root/'06je983_1g.txt').write_text(self.LEM_HEADER,encoding='cp932')
+            expanded,_=forest.expand_sources([lem],root/'work')
+            self.assertEqual(len(expanded),2)
+            records=forest.classify_sources(expanded)
+            self.assertEqual([r['kind'] for r in records],['lem'])
+
+    def test_forest_classify_sources_prefers_csv_over_txt_companion(self):
+        # 同一stemに.csvと.txtが両方存在する場合は.csvを優先する(仮定・明記)。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            lem=root/'a.lem';lem.write_text(' '*6+'   1'+' 1000\r\n',encoding='ascii')
+            csv_path=root/'a.csv';csv_path.write_text(self.LEM_HEADER,encoding='cp932')
+            txt_path=root/'a.txt';txt_path.write_text('this is not LEM metadata\n',encoding='utf-8')
+            expanded,_=forest.expand_sources([lem],root/'work')
+            self.assertIn(csv_path,expanded)
+            self.assertNotIn(txt_path,expanded)
+            records=forest.classify_sources([lem,csv_path])
+            self.assertEqual([r['kind'] for r in records],['lem'])
+
+    def test_forest_classify_sources_standalone_txt_grid_is_unaffected(self):
+        # .txtは単体のXYZグリッド入力としても使われる。LEM companion扱いにならず
+        # 従来どおりgridとして分類されることを確認する(回帰防止)。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            grid=root/'grid.txt';grid.write_text('X,Y,Z\n10,20,30\n11,20,31\n')
+            records=forest.classify_sources([grid])
+            self.assertEqual([r['kind'] for r in records],['grid'])
+
+    def test_is_lem_metadata_does_not_read_past_probe_bound_on_large_grid_txt(self):
+        # 2026-09-30 ユーザー報告の再発防止テスト。実データでは、LEMのcompanion
+        # メタデータとは無関係に、同じ命名規則の巨大な(最大約100MB)単体.txtグリッドが
+        # 同居するフォルダー(「txt形式」等)が存在する。is_lem_metadata()がファイル
+        # 全体を読み込んでいると、この種のファイルが多数(実例では714件)ある場合に
+        # 大量のI/O・メモリ確保が積み重なり、QGISが長時間「応答なし」になっていた。
+        # ここでは、プローブ上限を超えるファイルに対してファイル全体は読み込まれない
+        # ことを、open()呼び出しに渡されるサイズ上限を検証することで確認する。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            huge=root/'06ke081_1g.txt'
+            # 実際に大容量データを書き込まずスパースファイルで巨大サイズを再現する。
+            with open(huge,'wb') as f:
+                f.seek(forest.LEM_METADATA_PROBE_BYTES*8)
+                f.write(b'0')
+            calls=[]
+            original_open=open
+            def counting_open(path,*args,**kwargs):
+                fh=original_open(path,*args,**kwargs)
+                if str(path)==str(huge):
+                    real_read=fh.read
+                    def counting_read(size=-1,*a,**kw):
+                        calls.append(size)
+                        return real_read(size,*a,**kw)
+                    fh.read=counting_read
+                return fh
+            with patch('builtins.open',counting_open):
+                result=forest.is_lem_metadata(huge)
+            self.assertFalse(result)
+            self.assertTrue(calls)
+            self.assertLessEqual(max(calls),forest.LEM_METADATA_PROBE_BYTES)
+
+    def test_is_lem_metadata_accepts_real_size_companion_beyond_naive_estimate(self):
+        # 実機で確認された本物のLEM対応メタデータ(.csv)は数百バイトではなく最大約35KB
+        # あった。プローブ上限(256KiB)がこれを十分に上回ることを確認する回帰テスト。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            header=root/'06ne882_1g.csv'
+            # ヘッダー本体の後ろに実データを模した大量の行を追加し、合計サイズを
+            # 実測に近い約35KBまで水増しする(内容自体はパース対象外の余分な行)。
+            padding='\n'.join(f'メモ{i},{i}' for i in range(2800))
+            header.write_text(self.LEM_HEADER+padding,encoding='cp932')
+            self.assertGreater(header.stat().st_size,30000)
+            self.assertTrue(forest.is_lem_metadata(header))
+
+    def test_forest_classify_sources_large_standalone_txt_grid_is_not_metadata(self):
+        # txt形式フォルダーのような、.lem companionを伴わない大容量.txtグリッドが
+        # gridとして分類され、メタデータ判定のための全文読み込みで固まらないことを確認。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            grid=root/'06ke081_1g.txt'
+            with open(grid,'wb') as f:
+                f.seek(forest.LEM_METADATA_PROBE_BYTES*4)
+                f.write(b'0')
+            records=forest.classify_sources([grid])
+            self.assertEqual([r['kind'] for r in records],['grid'])
+
     def test_gsi_start_order_and_nodata(self):
         a,gt,crs,meta=next(gsi.parse_dem(xml()))
         np.testing.assert_array_equal(a,[[inputs.NODATA,10,0],[inputs.NODATA,inputs.NODATA,-2]])
@@ -238,6 +333,24 @@ class InputTests(unittest.TestCase):
             self.assertEqual(inputs.discover([str(root),str(a)],root,config(input_type='lidar')),[str(a),str(b)])
             self.assertEqual(inputs.discover([str(root)],root,config(input_type='lidar',recursive=False)),[str(a)])
             with self.assertRaises(ValueError):inputs.discover([str(a)],root,config(input_type='gsi'))
+
+    def test_individually_selected_companion_only_extensions_are_silently_skipped(self):
+        # v0.9.3: フォルダー選択時は元々.tfw等が黙ってスキップされていたが、
+        # 個別ファイル選択時だけ「Input extension does not match input_type」で
+        # 強制停止していた（ユーザー報告、2026-09-30）。.tfw/.tifw/.wldは
+        # そもそも単独では主入力になり得ない同梱物なので、個別選択でも
+        # フォルダー選択と同じく黙ってスキップするよう統一したことを確認する。
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);tif=root/'dem.tif';tif.touch();tfw=root/'dem.tfw';tfw.touch()
+            self.assertEqual(inputs.discover([str(tif),str(tfw)],root,config(input_type='raster')),[str(tif)])
+            # tfw/tifw/wldのみを個別選択した場合は、有効な入力が1件もないため
+            # 従来どおり明確なエラーで停止する(黙って「入力0件」を通さない)。
+            with self.assertRaises(ValueError):
+                inputs.discover([str(tfw)],root,config(input_type='raster'))
+            # 同梱物とは無関係の拡張子不一致は、引き続き個別選択時にエラーとする。
+            bad=root/'notes.txt';bad.touch()
+            with self.assertRaises(ValueError):
+                inputs.discover([str(bad)],root,config(input_type='raster'))
 
     def test_text_columns_axes_nodata_encoding(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -306,6 +419,40 @@ class InputTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):points.run_process(sys.executable,['-c','pass'],log,Feedback())
 
 
+    def test_forest_nodata_codes_excludes_band_nodata(self):
+        self.assertEqual(inputs.forest_nodata_codes(-9999.,-9999.),(-1111.,))
+        self.assertEqual(inputs.forest_nodata_codes(-32768.,-9999.),(-9999.,-1111.))
+        self.assertEqual(inputs.forest_nodata_codes(None,None),(-9999.,-1111.))
+        self.assertEqual(inputs.forest_nodata_codes(None,-5.),(-9999.,-1111.,-5.))
+
+    def test_mask_forest_nodata_codes_skips_open_when_no_codes(self):
+        class NoGDAL:
+            def Open(self,path):raise AssertionError('must not open')
+        self.assertEqual(inputs.mask_forest_nodata_codes('a.tif','b.tif',(),None,NoGDAL()),('a.tif',None,0))
+
+    def test_crs_probe_raster_returns_file_unchanged(self):
+        self.assertEqual(inputs.crs_probe_raster('dem.tif',True),'dem.tif')
+
+    def test_crs_probe_raster_picks_first_raster_in_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            (root/'b.tif').touch();(root/'A.TIF').touch();(root/'a.tfw').touch()
+            self.assertEqual(Path(inputs.crs_probe_raster(root,False)).name,'A.TIF')
+
+    def test_crs_probe_raster_respects_recursive_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'sub').mkdir();(root/'sub'/'dem.tif').touch()
+            self.assertEqual(Path(inputs.crs_probe_raster(root,True)).name,'dem.tif')
+            with self.assertRaises(ValueError):inputs.crs_probe_raster(root,False)
+
+    def test_crs_probe_raster_rejects_folder_without_raster(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'readme.txt').touch()
+            with self.assertRaises(ValueError):inputs.crs_probe_raster(root,True)
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):inputs.crs_probe_raster(tmp,True)
+
+
 @unittest.skipUnless(importlib.util.find_spec('osgeo'),'GDAL unavailable')
 class GDALInputTests(unittest.TestCase):
     def test_zipped_xml_to_aligned_dem(self):
@@ -325,6 +472,50 @@ class GDALInputTests(unittest.TestCase):
             a=ds.ReadAsArray();np.testing.assert_allclose(a[a!=inputs.NODATA],100.,atol=.001)
             ds=None
             self.assertFalse((root/'not-extracted.xml').exists())
+
+
+    def _forest_tiff(self, gdal, osr, path, array, nodata):
+        ds=gdal.GetDriverByName('GTiff').Create(str(path),array.shape[1],array.shape[0],1,gdal.GDT_Float32)
+        ds.SetGeoTransform((0.,1.,0.,10.,0.,-1.))
+        srs=osr.SpatialReference();srs.ImportFromEPSG(6677);ds.SetProjection(srs.ExportToWkt())
+        if nodata is not None:ds.GetRasterBand(1).SetNoDataValue(nodata)
+        ds.GetRasterBand(1).WriteArray(array);ds=None
+
+    def _prepare_forest(self, gdal, osr, root, array, nodata, **kwargs):
+        tif=root/'dem.tif';self._forest_tiff(gdal,osr,tif,array,nodata)
+        c=config(input_type='forest',inputs=[str(tif)],**kwargs)
+        result,report=inputs.prepare_inputs(c,root/'work',gdal,osr)
+        ds=gdal.Open(result['inputs'][0]);a=ds.ReadAsArray();ds=None
+        return a,report
+
+    def test_forest_tiff_masks_codes_that_differ_from_nodata_tag(self):
+        from osgeo import gdal,osr
+        array=np.full((10,10),100.,dtype='float32')
+        array[2,2]=-9999.;array[5,5]=-1111.;array[8,8]=-32768.
+        with tempfile.TemporaryDirectory() as tmp:
+            a,report=self._prepare_forest(gdal,osr,Path(tmp),array,-32768.)
+            self.assertEqual(report['detected'][0]['extra_nodata_cells'],2)
+            valid=a[a!=inputs.NODATA]
+            self.assertTrue(valid.size>0)
+            np.testing.assert_allclose(valid,100.,atol=.001)
+
+    def test_forest_tiff_without_nodata_tag_masks_both_codes(self):
+        from osgeo import gdal,osr
+        array=np.full((10,10),100.,dtype='float32');array[2,2]=-9999.;array[5,5]=-1111.
+        with tempfile.TemporaryDirectory() as tmp:
+            a,report=self._prepare_forest(gdal,osr,Path(tmp),array,None)
+            self.assertEqual(report['detected'][0]['extra_nodata_cells'],2)
+            np.testing.assert_allclose(a[a!=inputs.NODATA],100.,atol=.001)
+
+    def test_forest_tiff_without_extra_codes_is_not_copied(self):
+        from osgeo import gdal,osr
+        array=np.full((10,10),100.,dtype='float32');array[2,2]=-9999.
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            a,report=self._prepare_forest(gdal,osr,root,array,-9999.)
+            self.assertEqual(report['detected'][0]['extra_nodata_cells'],0)
+            self.assertEqual(list((root/'work').glob('forest_masked_*')),[])
+            np.testing.assert_allclose(a[a!=inputs.NODATA],100.,atol=.001)
 
 
 @unittest.skipUnless(importlib.util.find_spec('osgeo') and shutil.which('pdal'),'GDAL/PDAL unavailable')

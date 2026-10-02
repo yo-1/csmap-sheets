@@ -1,7 +1,21 @@
 """Readers for Japanese forestry airborne-laser DEM deliverables. GPL-3.0-only.
 
-Supported products are LEM+CSV metadata pairs, XYZ/CSV regular grids,
+Supported products are LEM+CSV(or .txt) metadata pairs, XYZ/CSV regular grids,
 TIFF+world-file rasters, GeoTIFF rasters, and ZIP containers of those files.
+
+LEMの対応メタデータファイルは、規則上は.csv拡張子だが実態として.txt拡張子で
+提供される場合がある（2026-09-30 ユーザー報告）。判定は拡張子ではなく中身の
+CSV構造（is_lem_metadata）で行うため、.csv/.txtいずれの拡張子でも認識できる。
+同一stemに両方存在する場合は.csvを優先する。
+
+注意：.txt拡張子は、上記のLEM対応メタデータとは無関係に、それ自体が標高値を
+含む単体のXYZ/CSVグリッドファイルとしても使われる（実データでは「txt形式」等の
+フォルダーに、.lem companionを持たない最大約100MB規模の.txtが大量に同居する
+ケースが確認されている）。そのため is_lem_metadata() はファイル全体ではなく
+先頭の固定バイト数（LEM_METADATA_PROBE_BYTES）のみを読んで判定する
+「プローブ」方式にしている。v0.9.1では全文読み込みで判定していたため、この
+種の大容量.txtが多数存在する実データでQGISが長時間「応答なし」になる回帰
+バグを引き起こしていた（v0.9.2で修正、CHANGELOG.md参照）。
 """
 import csv
 import hashlib
@@ -32,9 +46,20 @@ def _key(value):
     return re.sub(r'[\s　_()（）・]+', '', value).lower()
 
 
-def read_lem_metadata(path):
-    """Read the companion CSV header defined for LEM mesh elevation files."""
-    text, encoding = _decode(Path(path).read_bytes())
+# LEMメタデータ候補の判定(is_lem_metadata)に読み込むバイト数の上限。実測した本物の
+# メタデータCSV(companion)は最大でも数十KB程度だったが、森林航空レーザ成果の実データには
+# 同じ命名規則で最大約100MBに達する単体の.txtグリッドファイルが同居するフォルダー
+# (「txt形式」等)が存在することが判明した(2026-09-30 ユーザー報告)。これらは.lem companion
+# ではなく、それ自体が標高値を含む独立したテキストグリッドであり、メタデータ判定のために
+# ファイル全体を読み込むと、大量の大容量ファイルに対してI/O・メモリ確保が積み重なり、
+# QGISが長時間「応答なし」になる不具合が実際に発生した。そのため判定は先頭の一定バイト数
+# だけを読む「プローブ」方式に変更する。実測の本物メタデータ(最大約35KB)に対して十分な
+# 余裕(約7倍)を持たせた値。
+LEM_METADATA_PROBE_BYTES = 262144  # 256 KiB
+
+
+def _parse_metadata_fields(text, path):
+    """Extract the aliased LEM header fields from already-decoded CSV text."""
     result = {}
     for row in csv.reader(text.splitlines()):
         if len(row) >= 2 and row[0].strip():
@@ -64,13 +89,50 @@ def read_lem_metadata(path):
         if name in values: values[name] = int(float(values[name]))
     for name in ('dx', 'dy', 'south_n', 'west_e', 'north_n', 'east_e'):
         values[name] = float(values[name])
+    return values
+
+
+def read_lem_metadata(path):
+    """Read the companion CSV header defined for LEM mesh elevation files.
+
+    Reads the whole file. Call only on a file already confirmed (via
+    is_lem_metadata()) to be a small metadata companion, not on an arbitrary
+    candidate that might be a large text grid.
+    """
+    text, encoding = _decode(Path(path).read_bytes())
+    values = _parse_metadata_fields(text, path)
     values['encoding'] = encoding
     return values
 
 
+def _decode_head(path, max_bytes=LEM_METADATA_PROBE_BYTES):
+    """Decode only the leading max_bytes of a file.
+
+    Drops a possibly-truncated final line so a cut multi-byte sequence or an
+    incomplete row doesn't corrupt decoding. Used to test LEM-metadata
+    candidacy without reading an entire, potentially very large, file.
+    """
+    with open(path, 'rb') as f:
+        chunk = f.read(max_bytes)
+    if len(chunk) == max_bytes:
+        cut = chunk.rfind(b'\n')
+        if cut > 0:
+            chunk = chunk[:cut]
+    return _decode(chunk)
+
+
 def is_lem_metadata(path):
+    """Cheaply test whether `path` looks like a LEM companion metadata file.
+
+    Reads only a bounded leading chunk (LEM_METADATA_PROBE_BYTES), not the
+    whole file -- see the module-level comment on that constant for why.
+    仮定：本物のメタデータの必須フィールドは、このプローブ範囲内(先頭256KiB)に
+    収まっている。この前提を超える巨大な本物メタデータが将来出てきた場合は、
+    grid扱いに誤判定される(未確認の残存リスク)。
+    """
     try:
-        metadata = read_lem_metadata(path)
+        text, _ = _decode_head(path)
+        metadata = _parse_metadata_fields(text, path)
         return metadata['nx'] > 0 and metadata['ny'] > 0
     except (OSError, UnicodeError, ValueError, csv.Error):
         return False
@@ -173,9 +235,21 @@ def expand_sources(paths, work):
             # '.CSV'等を拾えない。修正前の実装（parent.glob('*')を毎回全件走査し
             # p.suffix.lower()=='.csv'で判定）と同じ「拡張子は大文字小文字を区別しない」
             # 挙動を、キャッシュ後も保つため、ここでも glob('*') 全件から suffix.lower() で絞り込む。
-            csv_index_cache[directory] = {
-                p.stem.lower(): p for p in directory.glob('*') if p.suffix.lower() == '.csv'
-            }
+            #
+            # 森林航空レーザ成果の実データでは、LEMの対応メタデータファイルの拡張子が
+            # 規則上は.csvだが実態は.txtになっている場合が多い（2026-09-30 ユーザー報告）。
+            # is_lem_metadata()は中身のCSV構造で判定するため拡張子非依存で対応できるが、
+            # .txtは単体のXYZグリッド入力としても使われる拡張子のため、同一stemに
+            # .csvと.txtが両方存在する場合は.csvを優先する（同一ループ内で.csv側を
+            # 後勝ちで上書きすることで、glob('*')の列挙順に依存せず優先順位を保証する）。
+            entries = {}
+            for p in directory.glob('*'):
+                suffix = p.suffix.lower()
+                if suffix == '.txt':
+                    entries.setdefault(p.stem.lower(), p)
+                elif suffix == '.csv':
+                    entries[p.stem.lower()] = p
+            csv_index_cache[directory] = entries
         return csv_index_cache[directory]
     for ordinal, value in enumerate(paths, 1):
         path=Path(value)
@@ -188,15 +262,26 @@ def expand_sources(paths, work):
             if path.suffix.lower()=='.lem':
                 companion=path.with_suffix('.csv')
                 if not companion.exists():
+                    companion=path.with_suffix('.txt')
+                if not companion.exists():
                     companion=csv_index(path.parent).get(path.stem.lower(), companion)
                 if companion.exists() and companion not in expanded: expanded.append(companion)
     return expanded, archives
 
 
 def classify_sources(paths):
-    """Identify primary files and avoid treating LEM metadata CSV as an XYZ grid."""
+    """Identify primary files and avoid treating LEM metadata CSV/TXT as an XYZ grid."""
     files=[Path(p) for p in paths]
-    by_key={(p.parent, p.stem.lower()):p for p in files if p.suffix.lower()=='.csv'}
+    # companion候補は.csvと.txtの両方を対象にする（2026-09-30 ユーザー報告: 森林航空レーザ
+    # 成果の実データでは対応メタデータの拡張子が.txtの場合が多い）。同一stemに両方存在する
+    # 場合は.csvを優先する（expand_sources()のcsv_index()と同じ優先順位）。
+    by_key={}
+    for p in files:
+        suffix=p.suffix.lower()
+        if suffix=='.txt':
+            by_key.setdefault((p.parent,p.stem.lower()),p)
+        elif suffix=='.csv':
+            by_key[(p.parent,p.stem.lower())]=p
     result=[]
     for p in files:
         suffix=p.suffix.lower()
@@ -204,11 +289,11 @@ def classify_sources(paths):
         if suffix=='.lem':
             header=by_key.get((p.parent,p.stem.lower()))
             if header is None or not is_lem_metadata(header):
-                raise ValueError('LEM requires its companion metadata CSV with the same stem: '+str(p))
+                raise ValueError('LEM requires its companion metadata CSV/TXT (same stem, .csv or .txt) with LEM header fields: '+str(p))
             result.append({'kind':'lem','path':p,'metadata':header})
-        elif suffix=='.csv' and is_lem_metadata(p):
+        elif suffix in ('.csv','.txt') and is_lem_metadata(p):
             if not any(q.suffix.lower()=='.lem' and q.parent==p.parent and q.stem.lower()==p.stem.lower() for q in files):
-                raise ValueError('LEM metadata CSV has no companion .lem file: '+str(p))
+                raise ValueError('LEM metadata file (.csv/.txt) has no companion .lem file: '+str(p))
         elif suffix in ('.csv','.txt','.xyz'):
             result.append({'kind':'grid','path':p})
         elif suffix in ('.tif','.tiff'):

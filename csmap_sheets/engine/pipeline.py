@@ -18,8 +18,8 @@ from .map_sheets import dimensions, cut_sheets, intersecting_sheets
 from .progress import report, check_cancel, gdal_progress, CancelledError
 from .color_fme import render_fme, rendering_record as fme_rendering_record, validate_fme_settings
 
-VERSION = "0.9.0"
-from .xyz_tiles import DEFAULTS as XYZ_DEFAULTS, validate_xyz, write_xyz
+VERSION = "0.10.0"
+from .xyz_tiles import DEFAULTS as XYZ_DEFAULTS, validate_xyz, write_xyz, precheck_xyz_tile_count
 
 from .input_sources import DEFAULTS as INPUT_DEFAULTS, validate_input, discover, prepare_inputs
 
@@ -53,16 +53,67 @@ def color_settings(settings=None):
     return result
 
 
+SLOPE_ALGORITHMS = ('horn', 'central_difference')
+SLOPE_ALGORITHM_NAMES = {'horn': 'Horn法', 'central_difference': '中央差分法'}
+
+
+def missing_slope_algorithm_notice(saved, chosen):
+    """Warning text when a loaded profile predates slope_algorithm (v0.9.4 and
+    earlier), else None. Those profiles were produced with central differences,
+    so silently applying the new Horn default would change colours unnoticed."""
+    if 'slope_algorithm' in saved:
+        return None
+    return ('この設定プロファイルには傾斜計算方式（slope_algorithm）の指定がないため、'
+            f'画面で選択中の{SLOPE_ALGORITHM_NAMES[chosen]}を使います。v0.9.4以前の出力を'
+            '再現する場合は「傾斜計算のアルゴリズム」で中央差分法を選んでください。')
+
+
+def slope_gradients(raw, cell, slope_algorithm='horn'):
+    """Return (dz/dx, dz/dy) in the same units as raw/cell for the selected method.
+
+    Both methods need only a 1-cell halo (callers already supply
+    ceil(4*sigma_m/cell)+1 >= 1), so this does not change the halo requirement
+    documented on relief(). Sign convention is whatever falls out of the
+    np.roll shifts below; only the magnitude (via np.hypot in relief()) is
+    used downstream, so the sign is not significant here.
+
+    - 'central_difference': simple 2-point central difference (v0.9.4 and
+      earlier behaviour; kept as a selectable option for continuity with
+      prior outputs / third-party comparisons).
+    - 'horn' (default from v0.10.0): Horn (1981) 3x3 weighted method, the
+      same formula used by most GIS slope tools (e.g. ArcGIS, GDAL
+      gdaldem/QGIS "Slope"), which is less sensitive to single-cell noise
+      than the 2-point method.
+    """
+    if slope_algorithm not in SLOPE_ALGORITHMS:
+        raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
+    if slope_algorithm == 'central_difference':
+        dx = (np.roll(raw, -1, 1) - np.roll(raw, 1, 1)) / (2 * cell)
+        dy = (np.roll(raw, -1, 0) - np.roll(raw, 1, 0)) / (2 * cell)
+        return dx, dy
+    # Horn (1981): 3x3 neighbourhood, row index increasing southward.
+    n = np.roll(raw, 1, 0);   s = np.roll(raw, -1, 0)
+    w = np.roll(raw, 1, 1);   e = np.roll(raw, -1, 1)
+    nw = np.roll(n, 1, 1);    ne = np.roll(n, -1, 1)
+    sw = np.roll(s, 1, 1);    se = np.roll(s, -1, 1)
+    dx = ((ne + 2 * e + se) - (nw + 2 * w + sw)) / (8 * cell)
+    dy = ((sw + 2 * s + se) - (nw + 2 * n + ne)) / (8 * cell)
+    return dx, dy
+
+
 def relief(z, valid, cell, sigma_m, curvature_limit, slope_max, elev_range, color=None,
-           render_mode='independent_v040', fme=None):
+           render_mode='independent_v040', fme=None, slope_algorithm='horn'):
     """Return RGBA, slope degrees and negative-Laplacian proxy (1/m).
 
     All samples touching a missing value within the full processing support
-    are transparent. Callers must supply ceil(4*sigma_m/cell)+1 halo cells.
+    are transparent. Callers must supply ceil(4*sigma_m/cell)+1 halo cells
+    (>=1 cell, which both supported slope_algorithm values need).
     """
     render_mode = {'legacy': 'independent_v040', 'fme': 'fme_manual'}.get(render_mode, render_mode)
     if render_mode not in ('independent_v040', 'fme_manual'):
         raise ValueError("render_mode must be independent_v040 or fme_manual")
+    if slope_algorithm not in SLOPE_ALGORITHMS:
+        raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
     tone = color_settings(color) if render_mode == 'independent_v040' else None
     radius = math.ceil(4 * sigma_m / cell)
     halo = radius + 1
@@ -71,8 +122,7 @@ def relief(z, valid, cell, sigma_m, curvature_limit, slope_max, elev_range, colo
     smooth = (gaussian_filter(raw, sigma=sigma_m / cell, radius=radius,
                               mode="constant", cval=0)
               if sigma_m > 0 else raw.copy())
-    dx = (np.roll(raw, -1, 1) - np.roll(raw, 1, 1)) / (2 * cell)
-    dy = (np.roll(raw, -1, 0) - np.roll(raw, 1, 0)) / (2 * cell)
+    dx, dy = slope_gradients(raw, cell, slope_algorithm)
     slope = np.degrees(np.arctan(np.hypot(dx, dy)))
     curvature = -(np.roll(smooth, -1, 1) + np.roll(smooth, 1, 1)
                   + np.roll(smooth, -1, 0) + np.roll(smooth, 1, 0)
@@ -131,7 +181,17 @@ def validate_config(c, base_dir, feedback=None):
                     elevation_range_margin=50.0, block_size=512, sheet_level=5000,
                     max_sheets=100000, max_sheet_pixels=100000000, compression="DEFLATE",
                     max_pixels=1000000000, source_nodata=None,
-                    confirm_elevation_metres=False, color={}, render_mode=None, fme={})
+                    confirm_elevation_metres=False, color={}, render_mode=None, fme={},
+                    # v0.9.3: 図郭タイル出力に加えて、全域CS方式画像をVRTだけでなく
+                    # 単体のGeoTIFFとしても書き出すかどうか（ユーザー要望、
+                    # 2026-09-30。VRTは個々の図郭タイルへの参照のため、成果物を
+                    # 単独で移動・配布する用途にはGeoTIFFの方が扱いやすい）。
+                    merged_geotiff_enabled=True,
+                    # v0.10.0: 傾斜計算アルゴリズムの選択（ユーザー要望、2026-10-02）。
+                    # 既定はHorn法（3x3加重、ArcGIS/gdaldem等の標準的な傾斜算出法と同じ
+                    # 式。1セルノイズに対して中央差分法より頑健）。中央差分法は
+                    # v0.9.4以前の挙動（2点差分）との比較・互換のために選択可能とする。
+                    slope_algorithm='horn')
     defaults.update(XYZ_DEFAULTS)
     defaults.update(INPUT_DEFAULTS)
     unknown = set(c) - set(defaults) - {"inputs", "output_dir", "target_crs", "cell_size", "plane_zone", "color_model"}
@@ -173,6 +233,8 @@ def validate_config(c, base_dir, feedback=None):
             raise ValueError(f"Missing configuration: {name}")
     if not c["confirm_elevation_metres"]:
         raise ValueError("Confirm all source elevations use metres and the same vertical datum; then set confirm_elevation_metres=true")
+    if not isinstance(c["merged_geotiff_enabled"], bool):
+        raise ValueError("merged_geotiff_enabled must be boolean")
     for key in ("cell_size", "curvature_limit", "slope_max"):
         if not math.isfinite(c[key]) or c[key] <= 0:
             raise ValueError(f"{key} must be finite and positive")
@@ -180,6 +242,8 @@ def validate_config(c, base_dir, feedback=None):
         raise ValueError("sigma_m must be finite and nonnegative")
     if not 0 < c["slope_max"] <= 90:
         raise ValueError("slope_max must be <= 90 degrees")
+    if c["slope_algorithm"] not in SLOPE_ALGORITHMS:
+        raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
     if c.get("elevation_range_auto"):
         margin = c.get("elevation_range_margin", 50.0)
         if not math.isfinite(margin) or margin < 0:
@@ -220,6 +284,58 @@ def validate_config(c, base_dir, feedback=None):
     return c
 
 
+# GSI Notice: https://www.gsi.go.jp/LAW/heimencho.html
+# 平面直角座標系 第I系～第XIX系の原点(緯度,経度)。zoneはこの並びの1-based index。
+JPR_ZONE_ORIGINS = [(33,129.5), (33,131), (36,132+10/60), (33,133.5), (36,134+20/60),
+           (36,136), (36,137+10/60), (36,138.5), (36,139+50/60), (40,140+50/60),
+           (44,140.25), (44,142.25), (44,144.25), (26,142), (26,127.5),
+           (26,124), (26,131), (20,136), (26,154)]
+
+
+def _jpr_zone_of(srs):
+    """srs(osr.SpatialReference、投影済み)が平面直角座標系第I～XIX系のいずれかに
+    一致すればその番号(1-19)を、一致しなければNoneを返す。投影法・原点緯度経度・
+    縮尺係数・偽東距/偽北距の一致でのみ判定し、権威コード(EPSG番号)には依存しない。"""
+    if srs is None or not srs.IsProjected() or srs.GetAttrValue("PROJECTION") != "Transverse_Mercator":
+        return None
+    for number, (lat0, lon0) in enumerate(JPR_ZONE_ORIGINS, 1):
+        if all(abs(srs.GetProjParm(parm)-expected) <= 1e-8 for parm, expected in (
+                ("latitude_of_origin",lat0),("central_meridian",lon0),
+                ("scale_factor",.9999),("false_easting",0),("false_northing",0))):
+            return number
+    return None
+
+
+def infer_target_crs_from_raster(path, gdal, feedback=None):
+    """v0.9.3: 出力CRSが未指定のとき、先頭の入力ラスターファイルの実際のCRSを読み取り、
+    平面直角座標系第I～XIX系のいずれかと一致すればそのWKTを返す（ユーザー要望、
+    2026-09-30）。一致しない場合・ファイルを開けない場合・CRSが定義されていない場合は、
+    その理由を示す短い日本語文字列と共に(None, reason)を返す（v0.9.3追記、
+    2026-09-30：TIFF＋TFW(ワールドファイル)はTFW自体に座標系情報を持たないため、
+    このケースを「単に一致しなかった」場合と区別してユーザーに案内できるようにした。
+    ユーザー報告：「森林航空レーザ成果」モードでTIFF＋TFW入力を使う際、この違いが
+    分かりにくいという指摘を受けた）。呼び出し側（algorithm.py）がNone時に明確な
+    エラーで停止する。ラスター入力（mode=='raster'）にのみ適用し、text/lidar/forest
+    等の非GeoTIFF系入力には適用しない（それらのCRSはINPUT_CRSで別途明示されるため）。
+    未確認事項：本関数はこのモジュールのGDAL/OSR非搭載環境では未検証（テストは
+    GDAL利用可能な環境でのみ実行される）。
+
+    戻り値：(wkt, None) で成功、(None, reason) で失敗。"""
+    check_cancel(feedback)
+    ds = gdal.Open(str(path))
+    if ds is None:
+        return None, 'ファイルを開けませんでした'
+    srs = ds.GetSpatialRef()
+    wkt = ds.GetProjection()
+    ds = None
+    if srs is None or not wkt:
+        return None, ('この入力にはCRS(座標系)情報がありません。TIFF＋TFW(ワールドファイル)'
+                       'はTFW自体に位置合わせ情報しか持たず、CRS情報は持ちません')
+    if _jpr_zone_of(srs) is None:
+        return None, '入力のCRSが平面直角座標系第I～XIX系のいずれとも一致しません'
+    return wkt, None
+
+
 def check_sources(c, gdal, osr, feedback=None):
     target = osr.SpatialReference()
     target.SetFromUserInput(c["target_crs"])
@@ -229,23 +345,13 @@ def check_sources(c, gdal, osr, feedback=None):
         raise ValueError("Use a suitable local projected CRS, not Web/World Mercator, for terrain derivatives")
     if target.IsCompound() or target.GetAttrValue("PROJECTION") != "Transverse_Mercator":
         raise ValueError("target_crs must be a two-dimensional Japan Plane Rectangular CRS")
-    # GSI Notice: https://www.gsi.go.jp/LAW/heimencho.html
-    origins = [(33,129.5), (33,131), (36,132+10/60), (33,133.5), (36,134+20/60),
-               (36,136), (36,137+10/60), (36,138.5), (36,139+50/60), (40,140+50/60),
-               (44,140.25), (44,142.25), (44,144.25), (26,142), (26,127.5),
-               (26,124), (26,131), (20,136), (26,154)]
-    zone = None
-    for number, (lat0, lon0) in enumerate(origins, 1):
-        if all(abs(target.GetProjParm(parm)-expected) <= 1e-8 for parm, expected in (
-                ("latitude_of_origin",lat0),("central_meridian",lon0),
-                ("scale_factor",.9999),("false_easting",0),("false_northing",0))):
-            zone=number;break
+    zone = _jpr_zone_of(target)
     if zone is None:
         raise ValueError("Selected CRS is not one of Japan Plane Rectangular zones I-XIX")
     if c.get("plane_zone") is not None and c["plane_zone"] != zone:
         raise ValueError(f"target_crs is zone {zone}, but legacy plane_zone={c['plane_zone']}")
     c["plane_zone"] = zone
-    lat, lon = origins[zone-1]
+    lat, lon = JPR_ZONE_ORIGINS[zone-1]
     for parm, expected in (("latitude_of_origin", lat), ("central_meridian", lon),
                            ("scale_factor", .9999), ("false_easting", 0), ("false_northing", 0)):
         if abs(target.GetProjParm(parm)-expected) > 1e-8:
@@ -315,7 +421,8 @@ def make_relief(dem_path, output_path, c, gdal, feedback=None):
             valid = np.isfinite(a) & (a != NODATA)
             rgba, _, _ = relief(a, valid, c["cell_size"], c["sigma_m"],
                 c["curvature_limit"], c["slope_max"], c["elevation_range"], c.get('color'),
-                c.get('render_mode', 'independent_v040'), c.get('fme'))
+                c.get('render_mode', 'independent_v040'), c.get('fme'),
+                c.get('slope_algorithm', 'horn'))
             tile = rgba[y-y0:y-y0+bh, x-x0:x-x0+bw]
             valid_count += int(np.count_nonzero(tile[:, :, 3]))
             for b in range(4):
@@ -425,9 +532,14 @@ def rendering_settings(c):
             "colors_and_display_adjustments": c["color"],
             "curvature_sign": "negative=concave/valley/blue; positive=convex/ridge/warm",
         }
+    slope_algorithm = c.get("slope_algorithm", "horn")
     rendering["terrain_calculation"] = {
         "curvature": "negative five-point Laplacian of Gaussian-smoothed elevation (1/m)",
-        "slope": "central differences of unsmoothed elevation (degrees)",
+        "slope": {
+            "horn": "Horn (1981) 3x3 weighted method on unsmoothed elevation (degrees)",
+            "central_difference": "2-point central differences of unsmoothed elevation (degrees)",
+        }[slope_algorithm],
+        "slope_algorithm": slope_algorithm,
         "smoothing_sigma_m": c["sigma_m"],
         "filter_backend": BACKEND,
         "input_type": c.get("input_type", "raster"),
@@ -515,11 +627,36 @@ def run(c, feedback=None):
         # Validate domain and sheet count before materializing a large mosaic.
         manifest["candidate_sheets"] = sum(1 for _ in intersecting_sheets(bounds,
             c["plane_zone"], c["sheet_level"], c["max_sheets"]))
+        # v0.9.4: CS立体図の計算(render_sheets、最重量の処理)を始める前に、
+        # XYZ候補タイル数が上限を超えないか事前検証する（フェイルファスト）。
+        # 超過が判明していれば、1時間超かかることもある本計算を無駄に走らせない。
+        manifest["xyz_candidate_tiles_precheck"] = precheck_xyz_tile_count(
+            str(projected_path), c, gdal, osr)
+        save()
         report(feedback, f"Projected mosaic: {projected.RasterXSize} x {projected.RasterYSize}")
         projected.FlushCache();projected=vrt=None
         manifest['stage']='sheet_streaming';save()
         cs_mosaic,manifest['sheets'],manifest['valid_relief_pixels']=render_sheets(
             projected_path,out,c,gdal,ogr,osr,feedback)
+        if c.get("merged_geotiff_enabled", True):
+            check_cancel(feedback)
+            manifest["stage"] = "merged_geotiff"
+            save()
+            merged_path = out / "cs_relief_merged.tif"
+            mosaic_ds = gdal.Open(cs_mosaic)
+            if mosaic_ds is None:
+                raise RuntimeError("結合GeoTIFF書き出し用のVRTを開けませんでした: " + cs_mosaic)
+            merged = gdal.Translate(str(merged_path), mosaic_ds, format="GTiff",
+                creationOptions=["TILED=YES", f"COMPRESS={c['compression']}", "BIGTIFF=IF_SAFER",
+                                 "PHOTOMETRIC=RGB", "ALPHA=YES"])
+            mosaic_ds = None
+            if merged is None:
+                raise RuntimeError("結合GeoTIFFの書き出しに失敗しました: " + str(merged_path))
+            merged.FlushCache(); merged = None
+            manifest["cs_merged_geotiff"] = "cs_relief_merged.tif"
+            report(feedback, f"Merged GeoTIFF: {merged_path}")
+        else:
+            manifest["cs_merged_geotiff"] = None
         if c.get("xyz_enabled", True):
             manifest["stage"] = "xyz"
             save()

@@ -31,6 +31,18 @@ EXTENSIONS = {'raster': {'.tif','.tiff','.img','.asc','.vrt'}, 'gsi': {'.xml','.
               'text': {'.xyz','.csv','.txt'}, 'lidar': {'.las','.laz'},
               'forest': {'.lem','.csv','.txt','.xyz','.tif','.tiff','.zip'}}
 
+# TIFFワールドファイル等、単独では入力になり得ない「同梱物」専用の拡張子。
+# フォルダー選択時はこれらを無条件で黙ってスキップしている（EXTENSIONSに
+# 含まれないため）。個別ファイル選択時のみ「Input extension does not match
+# input_type」で強制停止していたが、フォルダー経由と個別選択経由とで
+# ユーザーの体感結果が変わってしまう（同じ.tfwが混ざったフォルダを対象に
+# しても、フォルダー全体を選ぶか個別チェックボックスで選ぶかで挙動が違う）
+# のは筋が悪いため、v0.9.3でここに限り個別選択でも黙ってスキップするように
+# 統一する（ユーザー報告、2026-09-30）。あくまで「そもそも主入力になり得ない
+# 同梱物」という性質が既知の拡張子に限定し、それ以外の拡張子不一致は
+# 従来どおり明確なエラーで停止する（黙ったフォールバックの拡大はしない）。
+COMPANION_ONLY_EXTENSIONS = {'.tfw', '.tifw', '.wld'}
+
 
 def explicit_file_parameter(value):
     """Decode the raw QGIS multiple-file value without consulting layer state."""
@@ -192,6 +204,7 @@ def discover(inputs, base_dir, c, feedback=None):
                 matches = []
         if not matches:raise ValueError('No input matched: '+str(entry))
         found=0
+        companion_only=0
         for match in matches:
             match_mode = mode if match == p and mode is not None else _network_call(
                 f'入力属性確認: {match}', lambda match=match: os.stat(str(match)).st_mode, feedback)
@@ -203,6 +216,9 @@ def discover(inputs, base_dir, c, feedback=None):
             for f in items:
                 if f.suffix.lower() not in extensions:
                     if not is_directory:
+                        if f.suffix.lower() in COMPANION_ONLY_EXTENSIONS:
+                            companion_only+=1
+                            continue
                         raise ValueError('Input extension does not match input_type: '+str(f))
                     continue
                 found+=1
@@ -210,8 +226,27 @@ def discover(inputs, base_dir, c, feedback=None):
                 identity=os.path.normcase(path)
                 if identity not in seen:files.append(path);seen.add(identity)
                 if len(files)>c['max_input_files']:raise ValueError('Too many input files')
-        if not found:raise ValueError('No supported files in: '+str(entry))
+        if not found and not companion_only:raise ValueError('No supported files in: '+str(entry))
+    if not files:
+        # 個々のentryは「同梱物のみ」で有効化(companion_only>0)されたため上の
+        # per-entryチェックは通過したが、全entryを合算した結果、有効な入力が
+        # 1件も無いケース(例: .tfwだけを個別選択した場合)。ここで検出しないと
+        # 後続処理が「入力0件」のまま静かに進んでしまうため、明確なエラーで
+        # 停止する。
+        raise ValueError('No supported files found (only companion-only files such as .tfw were selected)')
     return files
+
+
+def crs_probe_raster(path, recursive, feedback=None):
+    """出力CRSの自動推定に使うラスターファイルを返す。
+
+    入力フォルダーが指定された場合は、パイプライン本体と同じ discover() で
+    列挙した先頭のラスターファイル（パスの小文字順）を返す。フォルダーを
+    そのまま gdal.Open に渡すと開けず、自動推定が必ず失敗していたため。
+    対象ファイルが無い場合は discover() の ValueError をそのまま送出する。"""
+    if not Path(path).is_dir():return str(path)
+    c={**DEFAULTS,'input_type':'raster','recursive':bool(recursive)}
+    return discover([str(path)],str(Path(path).parent),c,feedback)[0]
 
 
 def crs_of(value, osr):
@@ -240,6 +275,59 @@ def has_world_file(path):
     path=Path(path)
     expected={path.stem.lower()+suffix for suffix in ('.tfw','.tifw','.wld')}
     return any(p.is_file() and p.name.lower() in expected for p in path.parent.iterdir())
+
+
+# 森林航空レーザ成果のテキスト形式（forest_dem.read_lem）で欠測扱いにしている値。
+# TIFFでも同じ値が標高として紛れ込むと、CS立体図に大きな乱れが出る。
+FOREST_NODATA_CODES = (-9999.0, -1111.0)
+
+
+def forest_nodata_codes(band_nodata, forest_nodata):
+    """TIFFのNoData設定とは別に、欠測として扱うべき値を返す。
+
+    gdal.WarpのsrcNodataは1バンドに1値しか指定できないため、NoData設定
+    （band_nodata）と異なる欠測値が画素値に混在していると、その値が標高
+    として扱われる。ここで返す値は mask_forest_nodata_codes() で置き換える。"""
+    codes={float(v) for v in FOREST_NODATA_CODES}
+    if forest_nodata is not None:codes.add(float(forest_nodata))
+    if band_nodata is not None:codes.discard(float(band_nodata))
+    return tuple(sorted(codes))
+
+
+def mask_forest_nodata_codes(path, dest, codes, band_nodata, gdal, feedback=None):
+    """codesに該当する画素をNoDataに置き換えたGeoTIFFをdestに作る。
+
+    該当画素が無ければ何も作らず (path, band_nodata, 0) を返す（大半の入力で
+    コピーを作らないため）。該当があればFloat32のコピーを作り、
+    (dest, 新しいNoData値, 置換件数) を返す。読み書きは512行ずつ行い、
+    入力全体をメモリに載せない。"""
+    if not codes:return path,band_nodata,0
+    src=gdal.Open(str(path))
+    if src is None:raise ValueError('Cannot open forestry TIFF: '+str(path))
+    band=src.GetRasterBand(1);w,h=src.RasterXSize,src.RasterYSize
+    targets=np.asarray(codes,dtype='float64')
+    count=0
+    for row in range(0,h,512):
+        cancelled(feedback)
+        strip=band.ReadAsArray(0,row,w,min(512,h-row))
+        count+=int(np.count_nonzero(np.isin(strip.astype('float64'),targets)))
+    if count==0:
+        src=None
+        return path,band_nodata,0
+    fill=NODATA if band_nodata is None else float(band_nodata)
+    ds=gdal.GetDriverByName('GTiff').Create(str(dest),w,h,1,gdal.GDT_Float32,
+        options=['TILED=YES','COMPRESS=DEFLATE','PREDICTOR=3','BIGTIFF=IF_SAFER'])
+    if ds is None:raise RuntimeError('Cannot create '+str(dest))
+    ds.SetGeoTransform(src.GetGeoTransform())
+    if src.GetProjection():ds.SetProjection(src.GetProjection())
+    out=ds.GetRasterBand(1);out.SetNoDataValue(fill)
+    for row in range(0,h,512):
+        cancelled(feedback)
+        strip=band.ReadAsArray(0,row,w,min(512,h-row)).astype('float32')
+        strip[np.isin(strip.astype('float64'),targets)]=fill
+        if out.WriteArray(strip,0,row)!=0:raise RuntimeError('Raster write failed')
+    ds.FlushCache();ds=src=None
+    return str(dest),fill,count
 
 
 def normalize(path, dest, c, gdal, osr, feedback=None, override_nodata=True):
@@ -410,8 +498,15 @@ def prepare_inputs(c,work,gdal,osr,feedback=None):
                         raise ValueError('Non-GeoTIFF forestry TIFF requires a same-stem TFW/TIFW/WLD: '+str(path))
                     if not embedded and not c['input_crs'].strip():
                         raise ValueError('TIFF/world-file input has no embedded CRS; specify input_crs: '+str(path))
-                    raw=path;source={**c,'source_nodata':band_nodata if band_nodata is not None else c['forest_nodata']}
-                    report['detected'].append({'path':str(path),'kind':'geotiff' if embedded else 'tiff_worldfile'})
+                    codes=forest_nodata_codes(band_nodata,c['forest_nodata'])
+                    raw,band_nodata,masked=mask_forest_nodata_codes(
+                        path,work/f'forest_masked_{ordinal:06d}.tif',codes,band_nodata,gdal,feedback)
+                    if masked:
+                        say(feedback,f'NoData設定と異なる欠測値（{", ".join(f"{v:g}" for v in codes)}）を'
+                                     f'{masked}画素検出し、NoDataとして扱いました: {path}')
+                    source={**c,'source_nodata':band_nodata if band_nodata is not None else c['forest_nodata']}
+                    report['detected'].append({'path':str(path),'kind':'geotiff' if embedded else 'tiff_worldfile',
+                                               'extra_nodata_cells':masked})
                 aligned=work/f'aligned_{ordinal:06d}.tif'
                 outputs.append(normalize(raw,aligned,source,gdal,osr,feedback,kind=='raster'))
                 report['sources'].append({'path':str(path),'kind':kind});save()
