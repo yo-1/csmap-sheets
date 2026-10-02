@@ -31,7 +31,7 @@ class XYZTests(unittest.TestCase):
         self.assertEqual(estimate_candidate_tiles(bounds, 2, 2), 16)
 
     def test_default_max_zoom_is_16(self):
-        # v0.9.4: 実データ検証の結果、標準運用のXYZ最大ズームは16とする。
+        # v0.9.4: 検証用データでの確認の結果、標準運用のXYZ最大ズームは16とする。
         self.assertEqual(DEFAULTS['xyz_max_zoom'], 16)
 
     def test_precheck_xyz_tile_count_integration(self):

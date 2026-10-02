@@ -9,7 +9,7 @@ XYZ_FORMATS = ('png', 'webp')
 # default 75), LOSSLESS is TRUE/FALSE (driver default FALSE). xyz_webp_lossless=True
 # keeps the v0.8.0 behaviour (LOSSLESS=TRUE) as the plugin default; quality is only
 # meaningful when xyz_webp_lossless is False.
-# v0.9.4: 標準運用として最大ズーム16を採用（実データでの検証結果、2026-09-30。
+# v0.9.4: 標準運用として最大ズーム16を採用（検証用データでの検証結果、2026-09-30。
 # 18のままだと広域・高解像度データで候補タイル数がxyz_max_tilesの上限を
 # 超過しやすく、しかも超過判定がCS立体図計算・結合GeoTIFF書き出しの後まで
 # 遅延するため、無駄な計算時間を招く。恒久対応は事前検証の追加を別途検討。

@@ -201,7 +201,7 @@ class InputTests(unittest.TestCase):
                   '区画右上X座標,100\n区画右上Y座標,100\n')
 
     def test_forest_expand_sources_accepts_txt_companion_when_no_csv(self):
-        # 2026-09-30 ユーザー報告: 森林航空レーザ成果の実データでは、LEMの対応
+        # 2026-09-30 ユーザー報告: 森林航空レーザ成果のデータでは、LEMの対応
         # メタデータファイルの拡張子が規則上は.csvだが実態は.txtの場合が多い。
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
@@ -235,7 +235,7 @@ class InputTests(unittest.TestCase):
             self.assertEqual([r['kind'] for r in records],['grid'])
 
     def test_is_lem_metadata_does_not_read_past_probe_bound_on_large_grid_txt(self):
-        # 2026-09-30 ユーザー報告の再発防止テスト。実データでは、LEMのcompanion
+        # 2026-09-30 ユーザー報告の再発防止テスト。検証用データでは、LEMのcompanion
         # メタデータとは無関係に、同じ命名規則の巨大な(最大約100MB)単体.txtグリッドが
         # 同居するフォルダー(「txt形式」等)が存在する。is_lem_metadata()がファイル
         # 全体を読み込んでいると、この種のファイルが多数(実例では714件)ある場合に
@@ -272,7 +272,7 @@ class InputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
             header=root/'06ne882_1g.csv'
-            # ヘッダー本体の後ろに実データを模した大量の行を追加し、合計サイズを
+            # ヘッダー本体の後ろに実在のデータを模した大量の行を追加し、合計サイズを
             # 実測に近い約35KBまで水増しする(内容自体はパース対象外の余分な行)。
             padding='\n'.join(f'メモ{i},{i}' for i in range(2800))
             header.write_text(self.LEM_HEADER+padding,encoding='cp932')

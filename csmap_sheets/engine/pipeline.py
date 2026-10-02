@@ -564,7 +564,7 @@ def detect_elevation_range(raster_ds, margin, feedback=None):
         raise RuntimeError("標高の自動検出に失敗しました（有効な標高範囲が見つかりません）。"
                             "「標高色の下限/上限」欄に手動で値を入力してください。")
     lo, hi = dmin - margin, dmax + margin
-    report(feedback, f"標高色の範囲を自動検出: 実データ {dmin:.1f}〜{dmax:.1f}m "
+    report(feedback, f"標高色の範囲を自動検出: 入力値 {dmin:.1f}〜{dmax:.1f}m "
                       f"→ 余白{margin:g}m込みで {lo:.1f}〜{hi:.1f}mを使用")
     return [lo, hi], [dmin, dmax]
 

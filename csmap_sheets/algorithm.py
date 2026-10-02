@@ -180,7 +180,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             '下記の余白を加えて使用。ELEV_MIN/ELEV_MAXの数値は無視されます）',
             defaultValue=False))
         elev_margin=QgsProcessingParameterNumber('ELEV_MARGIN',
-            '自動検出時の余白（m。実データの最小値から差し引き、最大値に加える）',
+            '自動検出時の余白（m。入力データの最小値から差し引き、最大値に加える）',
             QgsProcessingParameterNumber.Double,50.,minValue=0.,maxValue=1000.)
         elev_margin.setFlags(elev_margin.flags() | Qgis.ProcessingParameterFlag.Advanced)
         self.addParameter(elev_margin)
