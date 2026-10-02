@@ -44,6 +44,16 @@ class ConfigDefaultsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'merged_geotiff_enabled must be boolean'):
             validate_config(self.base_config(merged_geotiff_enabled='yes'), Path.cwd())
 
+    def test_slope_algorithm_defaults_to_horn_and_is_validated(self):
+        # v0.10.0: 傾斜計算アルゴリズムの選択（ユーザー決定、2026-10-02）。既定値はHorn法とし、
+        # 中央差分法(v0.9.4以前の既定)は明示指定時のみ使う。
+        c = validate_config(self.base_config(), Path.cwd())
+        self.assertEqual(c['slope_algorithm'], 'horn')
+        c2 = validate_config(self.base_config(slope_algorithm='central_difference'), Path.cwd())
+        self.assertEqual(c2['slope_algorithm'], 'central_difference')
+        with self.assertRaisesRegex(ValueError, 'slope_algorithm must be one of'):
+            validate_config(self.base_config(slope_algorithm='bogus'), Path.cwd())
+
 
 class StubSRS:
     """osr.SpatialReferenceの必要最小限のダック型スタブ。この開発環境には

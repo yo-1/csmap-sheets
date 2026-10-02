@@ -18,7 +18,7 @@ from .map_sheets import dimensions, cut_sheets, intersecting_sheets
 from .progress import report, check_cancel, gdal_progress, CancelledError
 from .color_fme import render_fme, rendering_record as fme_rendering_record, validate_fme_settings
 
-VERSION = "0.9.4"
+VERSION = "0.10.0"
 from .xyz_tiles import DEFAULTS as XYZ_DEFAULTS, validate_xyz, write_xyz, precheck_xyz_tile_count
 
 from .input_sources import DEFAULTS as INPUT_DEFAULTS, validate_input, discover, prepare_inputs
@@ -53,16 +53,55 @@ def color_settings(settings=None):
     return result
 
 
+SLOPE_ALGORITHMS = ('horn', 'central_difference')
+
+
+def slope_gradients(raw, cell, slope_algorithm='horn'):
+    """Return (dz/dx, dz/dy) in the same units as raw/cell for the selected method.
+
+    Both methods need only a 1-cell halo (callers already supply
+    ceil(4*sigma_m/cell)+1 >= 1), so this does not change the halo requirement
+    documented on relief(). Sign convention is whatever falls out of the
+    np.roll shifts below; only the magnitude (via np.hypot in relief()) is
+    used downstream, so the sign is not significant here.
+
+    - 'central_difference': simple 2-point central difference (v0.9.4 and
+      earlier behaviour; kept as a selectable option for continuity with
+      prior outputs / third-party comparisons).
+    - 'horn' (default from v0.10.0): Horn (1981) 3x3 weighted method, the
+      same formula used by most GIS slope tools (e.g. ArcGIS, GDAL
+      gdaldem/QGIS "Slope"), which is less sensitive to single-cell noise
+      than the 2-point method.
+    """
+    if slope_algorithm not in SLOPE_ALGORITHMS:
+        raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
+    if slope_algorithm == 'central_difference':
+        dx = (np.roll(raw, -1, 1) - np.roll(raw, 1, 1)) / (2 * cell)
+        dy = (np.roll(raw, -1, 0) - np.roll(raw, 1, 0)) / (2 * cell)
+        return dx, dy
+    # Horn (1981): 3x3 neighbourhood, row index increasing southward.
+    n = np.roll(raw, 1, 0);   s = np.roll(raw, -1, 0)
+    w = np.roll(raw, 1, 1);   e = np.roll(raw, -1, 1)
+    nw = np.roll(n, 1, 1);    ne = np.roll(n, -1, 1)
+    sw = np.roll(s, 1, 1);    se = np.roll(s, -1, 1)
+    dx = ((ne + 2 * e + se) - (nw + 2 * w + sw)) / (8 * cell)
+    dy = ((sw + 2 * s + se) - (nw + 2 * n + ne)) / (8 * cell)
+    return dx, dy
+
+
 def relief(z, valid, cell, sigma_m, curvature_limit, slope_max, elev_range, color=None,
-           render_mode='independent_v040', fme=None):
+           render_mode='independent_v040', fme=None, slope_algorithm='horn'):
     """Return RGBA, slope degrees and negative-Laplacian proxy (1/m).
 
     All samples touching a missing value within the full processing support
-    are transparent. Callers must supply ceil(4*sigma_m/cell)+1 halo cells.
+    are transparent. Callers must supply ceil(4*sigma_m/cell)+1 halo cells
+    (>=1 cell, which both supported slope_algorithm values need).
     """
     render_mode = {'legacy': 'independent_v040', 'fme': 'fme_manual'}.get(render_mode, render_mode)
     if render_mode not in ('independent_v040', 'fme_manual'):
         raise ValueError("render_mode must be independent_v040 or fme_manual")
+    if slope_algorithm not in SLOPE_ALGORITHMS:
+        raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
     tone = color_settings(color) if render_mode == 'independent_v040' else None
     radius = math.ceil(4 * sigma_m / cell)
     halo = radius + 1
@@ -71,8 +110,7 @@ def relief(z, valid, cell, sigma_m, curvature_limit, slope_max, elev_range, colo
     smooth = (gaussian_filter(raw, sigma=sigma_m / cell, radius=radius,
                               mode="constant", cval=0)
               if sigma_m > 0 else raw.copy())
-    dx = (np.roll(raw, -1, 1) - np.roll(raw, 1, 1)) / (2 * cell)
-    dy = (np.roll(raw, -1, 0) - np.roll(raw, 1, 0)) / (2 * cell)
+    dx, dy = slope_gradients(raw, cell, slope_algorithm)
     slope = np.degrees(np.arctan(np.hypot(dx, dy)))
     curvature = -(np.roll(smooth, -1, 1) + np.roll(smooth, 1, 1)
                   + np.roll(smooth, -1, 0) + np.roll(smooth, 1, 0)
@@ -136,7 +174,12 @@ def validate_config(c, base_dir, feedback=None):
                     # 単体のGeoTIFFとしても書き出すかどうか（ユーザー要望、
                     # 2026-09-30。VRTは個々の図郭タイルへの参照のため、成果物を
                     # 単独で移動・配布する用途にはGeoTIFFの方が扱いやすい）。
-                    merged_geotiff_enabled=True)
+                    merged_geotiff_enabled=True,
+                    # v0.10.0: 傾斜計算アルゴリズムの選択（ユーザー要望、2026-10-02）。
+                    # 既定はHorn法（3x3加重、ArcGIS/gdaldem等の標準的な傾斜算出法と同じ
+                    # 式。1セルノイズに対して中央差分法より頑健）。中央差分法は
+                    # v0.9.4以前の挙動（2点差分）との比較・互換のために選択可能とする。
+                    slope_algorithm='horn')
     defaults.update(XYZ_DEFAULTS)
     defaults.update(INPUT_DEFAULTS)
     unknown = set(c) - set(defaults) - {"inputs", "output_dir", "target_crs", "cell_size", "plane_zone", "color_model"}
@@ -187,6 +230,8 @@ def validate_config(c, base_dir, feedback=None):
         raise ValueError("sigma_m must be finite and nonnegative")
     if not 0 < c["slope_max"] <= 90:
         raise ValueError("slope_max must be <= 90 degrees")
+    if c["slope_algorithm"] not in SLOPE_ALGORITHMS:
+        raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
     if c.get("elevation_range_auto"):
         margin = c.get("elevation_range_margin", 50.0)
         if not math.isfinite(margin) or margin < 0:
@@ -364,7 +409,8 @@ def make_relief(dem_path, output_path, c, gdal, feedback=None):
             valid = np.isfinite(a) & (a != NODATA)
             rgba, _, _ = relief(a, valid, c["cell_size"], c["sigma_m"],
                 c["curvature_limit"], c["slope_max"], c["elevation_range"], c.get('color'),
-                c.get('render_mode', 'independent_v040'), c.get('fme'))
+                c.get('render_mode', 'independent_v040'), c.get('fme'),
+                c.get('slope_algorithm', 'horn'))
             tile = rgba[y-y0:y-y0+bh, x-x0:x-x0+bw]
             valid_count += int(np.count_nonzero(tile[:, :, 3]))
             for b in range(4):
@@ -474,9 +520,14 @@ def rendering_settings(c):
             "colors_and_display_adjustments": c["color"],
             "curvature_sign": "negative=concave/valley/blue; positive=convex/ridge/warm",
         }
+    slope_algorithm = c.get("slope_algorithm", "horn")
     rendering["terrain_calculation"] = {
         "curvature": "negative five-point Laplacian of Gaussian-smoothed elevation (1/m)",
-        "slope": "central differences of unsmoothed elevation (degrees)",
+        "slope": {
+            "horn": "Horn (1981) 3x3 weighted method on unsmoothed elevation (degrees)",
+            "central_difference": "2-point central differences of unsmoothed elevation (degrees)",
+        }[slope_algorithm],
+        "slope_algorithm": slope_algorithm,
         "smoothing_sigma_m": c["sigma_m"],
         "filter_backend": BACKEND,
         "input_type": c.get("input_type", "raster"),

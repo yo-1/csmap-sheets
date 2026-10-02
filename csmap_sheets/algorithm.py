@@ -165,12 +165,17 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             ('SIGMA','曲率用平滑化の標準偏差（m）',3.,0.,1000.),
             ('CURVE_LIMIT','曲率色の飽和値（±、1/m。FME資料の「±10」に対応する値。'
              '同梱FMWのKERNEL_DIVISOR=cell_size²×0.01から換算・確認済み）',.1,.000001,100.),
-            ('SLOPE_MAX','傾斜の暗さが飽和する角度',60.,.1,90.),
+            ('SLOPE_MAX','傾斜の暗さが飽和する角度（度。色調の設定であり、傾斜の計算方式とは別）',60.,.1,90.),
             ('ELEV_MIN','標高色の下限（m）',200.,-10000.,10000.),
             ('ELEV_MAX','標高色の上限（m）',2000.,-10000.,10000.),
         ]:
             self.addParameter(QgsProcessingParameterNumber(name,label,
                 QgsProcessingParameterNumber.Double,value,minValue=lo,maxValue=hi))
+        slope_algorithm=QgsProcessingParameterEnum('SLOPE_ALGORITHM','傾斜計算のアルゴリズム',
+            ['Horn法（推奨・既定。3×3加重差分）',
+             '中央差分法（従来互換。v0.9.4以前の既定）'],defaultValue=0)
+        slope_algorithm.setFlags(slope_algorithm.flags() | Qgis.ProcessingParameterFlag.Advanced)
+        self.addParameter(slope_algorithm)
         self.addParameter(QgsProcessingParameterBoolean('ELEV_AUTO',
             '標高色の下限/上限を自動検出する（対象範囲の実際の標高min/maxに'
             '下記の余白を加えて使用。ELEV_MIN/ELEV_MAXの数値は無視されます）',
@@ -406,6 +411,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             sigma_m=self.parameterAsDouble(parameters,'SIGMA',context),
             curvature_limit=self.parameterAsDouble(parameters,'CURVE_LIMIT',context),
             slope_max=self.parameterAsDouble(parameters,'SLOPE_MAX',context),
+            slope_algorithm=['horn','central_difference'][self.parameterAsEnum(parameters,'SLOPE_ALGORITHM',context)],
             elevation_range=[self.parameterAsDouble(parameters,'ELEV_MIN',context),
                              self.parameterAsDouble(parameters,'ELEV_MAX',context)],
             elevation_range_auto=self.parameterAsBool(parameters,'ELEV_AUTO',context),
@@ -428,15 +434,19 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             c[key]=self.parameterAsDouble(parameters,key.upper(),context)
         profile_choice=self.parameterAsEnum(parameters,'PROFILE',context)
         if profile_choice in (1,2):
+            # 傾斜計算アルゴリズム(SLOPE_ALGORITHM)はプロファイルで上書きせず、
+            # 利用者の選択（既定Horn法）をそのまま使う（v0.10.0、ユーザー決定）。
             c.update(cell_size=1. if profile_choice==1 else 2.,sigma_m=3.,curvature_limit=.1,
-                     slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,render_mode='fme_manual',fme=fme)
+                     slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,
+                     render_mode='fme_manual',fme=fme)
             feedback.pushInfo('組込み設定プロファイルを適用しました: '+('標準CS・1m' if profile_choice==1 else '試験処理・2m'))
         elif profile_choice==3:
             # Separate, opt-in provisional value (not the manual's own figure).
             # Never overwrites the FME manual default
             # (profile_choice 1/2) silently; the person must choose this profile explicitly.
             c.update(cell_size=1.,sigma_m=3.,curvature_limit=.03,
-                     slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,render_mode='fme_manual',fme=fme)
+                     slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,
+                     render_mode='fme_manual',fme=fme)
             feedback.pushInfo('組込み設定プロファイルを適用しました: 林野庁近似設定（暫定）（曲率±0.03）')
         elif profile_choice==4:
             profile_path=self.parameterAsFile(parameters,'PROFILE_FILE',context)
@@ -456,6 +466,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             feedback.pushInfo('設定プロファイルを読み込みました: '+profile_path)
         try:self.settings=validate_config(c,Path.cwd(),feedback=feedback)
         except (ValueError,TypeError,OSError) as exc:raise QgsProcessingException(str(exc)) from exc
+        feedback.pushInfo('傾斜計算方式: '+{'horn':'Horn法','central_difference':'中央差分法'}[self.settings['slope_algorithm']])
         save_value=parameters.get('SAVE_PROFILE')
         if not QgsVariantUtils.isNull(save_value) and str(save_value).strip():
             save_path=Path(self.parameterAsFileOutput(parameters,'SAVE_PROFILE',context))
