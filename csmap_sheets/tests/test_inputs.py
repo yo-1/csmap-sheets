@@ -91,7 +91,7 @@ class InputTests(unittest.TestCase):
             self.assertEqual(len(checked),1)
 
     def test_raw_qgis_file_parameter_is_authoritative(self):
-        selected=['C:/gis_data/kouchi_pref/04HD722.copc.laz']
+        selected=['input/sample.copc.laz']
         self.assertEqual(inputs.explicit_file_parameter(selected),selected)
         self.assertEqual(inputs.explicit_file_parameter('a.laz;b.laz'),['a.laz','b.laz'])
         self.assertEqual(inputs.explicit_file_parameter(None),[])
