@@ -90,7 +90,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         profile=self.addParameter(QgsProcessingParameterEnum('PROFILE','設定プロファイル',
             ['画面の設定を使用','標準CS・1m（FMEマニュアル方式、曲率±0.1）',
              '試験処理・2m（FMEマニュアル方式、曲率±0.1）',
-             '林野庁調整・暫定・1m（曲率±0.03）','外部JSONプロファイル'],defaultValue=0))
+             '林野庁近似設定（暫定）・1m（曲率±0.03）','外部JSONプロファイル'],defaultValue=0))
         profile_file=QgsProcessingParameterFile('PROFILE_FILE','読込む設定プロファイル（JSON）',
             extension='json',optional=True)
         profile_file.setFlags(profile_file.flags() | Qgis.ProcessingParameterFlag.Advanced);self.addParameter(profile_file)
@@ -432,12 +432,12 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                      slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,render_mode='fme_manual',fme=fme)
             feedback.pushInfo('組込み設定プロファイルを適用しました: '+('標準CS・1m' if profile_choice==1 else '試験処理・2m'))
         elif profile_choice==3:
-            # Separate, opt-in value relayed verbally by a 林野庁 (Forestry Agency) staff
-            # member - not the manual's own figure. Never overwrites the FME manual default
+            # Separate, opt-in provisional value (not the manual's own figure).
+            # Never overwrites the FME manual default
             # (profile_choice 1/2) silently; the person must choose this profile explicitly.
             c.update(cell_size=1.,sigma_m=3.,curvature_limit=.03,
                      slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,render_mode='fme_manual',fme=fme)
-            feedback.pushInfo('組込み設定プロファイルを適用しました: 林野庁調整・暫定（曲率±0.03）')
+            feedback.pushInfo('組込み設定プロファイルを適用しました: 林野庁近似設定（暫定）（曲率±0.03）')
         elif profile_choice==4:
             profile_path=self.parameterAsFile(parameters,'PROFILE_FILE',context)
             if not profile_path:raise QgsProcessingException('外部JSONプロファイルを選択してください。')
