@@ -32,3 +32,10 @@
   https://gdal.org/en/stable/api/python/utilities.html
 - QGIS 3.44 Processing API：ファイル複数選択とパラメータ評価。
   https://api.qgis.org/api/3.44/classQgsProcessingParameters.html
+
+## 検証に使用したデータの出典
+
+- 山梨県点群データ（航空LP・MMS）（山梨県 新価値創造推進局 新事業チャレンジ推進課）を加工して検証に使用した。公開元：G空間情報センター。使用したリソース：グリッドデータ_DEM（航空LP 0.50m、GeoTIFF形式）。ライセンス：CC BY 4.0/ODbL のデュアルライセンス（利用条件は同ページの「利用規約及び免責事項」による）。
+  https://www.geospatial.jp/ckan/dataset/yamanashi-pointcloud-2024
+- 出典：国土地理院 基盤地図情報 数値標高モデル（1mメッシュ、DEM1A）。基盤地図情報 数値標高モデル（国土地理院）を加工して検証に使用した。
+- 加工の内容は、座標変換とCS立体図の計算。本ソフトの出力と検証結果は、各提供元が作成したものではなく、提供元による保証もない。また、提供元のデータそのもの（未加工のデータ）でもない。データ自体は本リポジトリに含めていない。
