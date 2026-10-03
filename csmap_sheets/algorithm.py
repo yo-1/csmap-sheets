@@ -55,6 +55,37 @@ FME_PALETTE = [
 ]
 
 
+# 処理画面の区分（表示名の先頭に【区分】を付ける）。並び順はinitAlgorithm()の追加順で決まる。
+PARAMETER_SECTIONS = {
+    '設定': ('PROFILE','PROFILE_FILE','SAVE_PROFILE'),
+    '入力': ('INPUT_TYPE','FILES','INPUT_FOLDER','RECURSIVE','DEMS','INPUT_CRS','VERTICAL',
+            'NORMALIZE','METRES','NODATA'),
+    '点群': ('LIDAR_MODE','GROUND_CLASSES','PDAL','POINT_METHOD','POINT_RADIUS','POINT_TILE',
+            'AUTO_LIMIT','SMRF_CELL','SMRF_SLOPE','SMRF_THRESHOLD','SMRF_SCALAR','SMRF_WINDOW'),
+    'テキスト': ('TEXT_MODE','TEXT_DELIMITER','TEXT_ENCODING','TEXT_SKIP','TEXT_COLUMNS',
+               'TEXT_AXES','TEXT_CELL'),
+    '森林レーザ': ('FOREST_AXES','FOREST_CELL','LEM_SCALE','FOREST_NODATA'),
+    '出力・図郭': ('CRS','LEVEL','CELL'),
+    '地形計算': ('SIGMA_UNIT','SIGMA','SIGMA_PX','SLOPE_ALGORITHM'),
+    '配色': ('RENDER_MODE','LEGACY_PRESET','FME_STRETCH','CURVE_LIMIT','SLOPE_MAX',
+            'ELEV_MIN','ELEV_MAX','ELEV_AUTO','ELEV_MARGIN'),
+    'XYZ': ('XYZ','XYZ_FORMAT','XYZ_WEBP_LOSSLESS','XYZ_WEBP_QUALITY','XYZ_MIN','XYZ_MAX','XYZ_LIMIT'),
+    '出力': ('COMPRESSION','MERGED_GEOTIFF','LOAD','OUTPUT'),
+}
+# 区分名と重なる既存の接頭辞は外す（例：「テキスト：区切り文字」→「【テキスト】区切り文字」）
+SECTION_REDUNDANT_PREFIXES = {'テキスト': ('テキスト：',), '森林レーザ': ('森林航空レーザCSV：',)}
+
+
+def parameter_section(name):
+    """パラメーター名から処理画面の区分名を返す（色の個別指定などは配色）。"""
+    for section,names in PARAMETER_SECTIONS.items():
+        if name in names:
+            return section
+    if name.startswith(('LEGACY_','FME_')) or name.lower() in {n for n,*_ in COLOR_NUMBERS}:
+        return '配色'
+    return None
+
+
 class CSMapAlgorithm(QgsProcessingAlgorithm):
     def name(self):return 'create'
     def displayName(self):return 'DEMマージ・CS色調調整・国土基本図図郭・XYZ出力'
@@ -117,6 +148,12 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(QgsProcessingParameterCrs('INPUT_CRS','入力の水平座標系（テキスト・LEM・非GeoTIFFは必須／その他は空欄で自動）',optional=True))
         self.addParameter(QgsProcessingParameterString('VERTICAL','入力標高の基準名（記録用、例：測地成果2024）',optional=True))
         self.addParameter(QgsProcessingParameterBoolean('NORMALIZE','標高ラスタの座標系・解像度・格子をそろえる',True))
+        self.addParameter(QgsProcessingParameterBoolean('METRES',
+            '全入力の標高がm単位で、鉛直基準が統一済みであることを確認した',False))
+        nd=QgsProcessingParameterNumber('NODATA','入力NoDataを上書き（空欄なら入力の定義を使用）',
+            QgsProcessingParameterNumber.Double,optional=True)
+        nd.setFlags(nd.flags() | Qgis.ProcessingParameterFlag.Advanced)
+        self.addParameter(nd)
         self.addParameter(QgsProcessingParameterEnum('LIDAR_MODE','LAS/LAZ：地表面の取り出し方',
             ['分類済み（指定分類コードを抽出）','地表面点のみのデータ','自動分類（SMRF、結果確認が必要）'],defaultValue=0))
         self.addParameter(QgsProcessingParameterString('GROUND_CLASSES','LAS/LAZ：地表面分類コード（カンマ区切り）',defaultValue='2'))
@@ -167,32 +204,39 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(QgsProcessingParameterEnum('LEVEL','国土基本図の図郭レベル',
             ['5000：東西4000m × 南北3000m','2500：東西2000m × 南北1500m',
              '1000：東西800m × 南北600m','500：東西400m × 南北300m'],defaultValue=0))
+        self.addParameter(QgsProcessingParameterNumber('CELL','出力セルサイズ（m）',
+            QgsProcessingParameterNumber.Double,1.,minValue=.01,maxValue=100.))
+        # v0.12.0: σの指定方式。処理画面は選択に応じて単位表示を切り替えられないため、
+        # 方式ごとに入力欄を分け、選んだ方式の値だけを使う（もう一方の値は保持する）。
+        # 組であることが分かるよう、指定方式・m・pxの3欄を続けて並べる。
+        self.addParameter(QgsProcessingParameterEnum('SIGMA_UNIT','曲率用平滑化の指定方式',
+            ['地上距離（m）（既定。格子が変わっても同じ地形の大きさを平滑化）',
+             '計算格子の画素数（px）（格子が細かいほど細かい起伏を残す）'],defaultValue=0))
+        self.addParameter(QgsProcessingParameterNumber('SIGMA',
+            '曲率用平滑化の標準偏差（m。指定方式が「地上距離」のとき使用。0で平滑化なし）',
+            QgsProcessingParameterNumber.Double,3.,minValue=0.,maxValue=1000.))
+        self.addParameter(QgsProcessingParameterNumber('SIGMA_PX',
+            '曲率用平滑化の標準偏差（計算格子の画素数。指定方式が「画素数」のとき使用。0で平滑化なし）',
+            QgsProcessingParameterNumber.Double,3.,minValue=0.,maxValue=128.))
+        slope_algorithm=QgsProcessingParameterEnum('SLOPE_ALGORITHM','傾斜計算のアルゴリズム',
+            ['Horn法（推奨・既定。3×3加重差分）',
+             '中央差分法（従来互換。v0.9.4以前の既定）'],defaultValue=0)
+        self.addParameter(slope_algorithm)
+        self.addParameter(QgsProcessingParameterEnum('RENDER_MODE','描画方式',
+            ['独自方式 v0.4互換','FMEマニュアル方式'],defaultValue=0))
+        self.addParameter(QgsProcessingParameterEnum('LEGACY_PRESET','独自方式の色設定',
+            ['従来標準','カスタム','従来淡色','従来地形強調','グレースケール'],defaultValue=0))
+        self.addParameter(QgsProcessingParameterEnum('FME_STRETCH','FME RGBストレッチ',
+            ['なし','長野県実績値（R 65–234、G 57–229、B 66–216）','カスタム'],defaultValue=1))
         for name,label,value,lo,hi in [
-            ('CELL','出力セルサイズ（m）',1.,.01,100.),
-            ('SIGMA','曲率用平滑化の標準偏差（m。指定方式が「地上距離」のとき使用。0で平滑化なし）',3.,0.,1000.),
             ('CURVE_LIMIT','曲率色の飽和値（±、1/m。FME資料の「±10」に対応する値。'
              '同梱FMWのKERNEL_DIVISOR=cell_size²×0.01から換算・確認済み）',.1,.000001,100.),
             ('SLOPE_MAX','傾斜の暗さが飽和する角度（度。色調の設定であり、傾斜の計算方式とは別）',60.,.1,90.),
             ('ELEV_MIN','標高色の下限（m）',200.,-10000.,10000.),
             ('ELEV_MAX','標高色の上限（m）',2000.,-10000.,10000.),
         ]:
-            if name=='SIGMA':
-                # v0.12.0: σの指定方式。処理画面は選択に応じて単位表示を切り替えられないため、
-                # 方式ごとに入力欄を分け、選んだ方式の値だけを使う（もう一方の値は保持する）。
-                # 組であることが分かるよう、指定方式・m・pxの3欄を続けて並べる。
-                self.addParameter(QgsProcessingParameterEnum('SIGMA_UNIT','曲率用平滑化の指定方式',
-                    ['地上距離（m）（既定。格子が変わっても同じ地形の大きさを平滑化）',
-                     '計算格子の画素数（px）（格子が細かいほど細かい起伏を残す）'],defaultValue=0))
             self.addParameter(QgsProcessingParameterNumber(name,label,
                 QgsProcessingParameterNumber.Double,value,minValue=lo,maxValue=hi))
-            if name=='SIGMA':
-                self.addParameter(QgsProcessingParameterNumber('SIGMA_PX',
-                    '曲率用平滑化の標準偏差（計算格子の画素数。指定方式が「画素数」のとき使用。0で平滑化なし）',
-                    QgsProcessingParameterNumber.Double,3.,minValue=0.,maxValue=128.))
-        slope_algorithm=QgsProcessingParameterEnum('SLOPE_ALGORITHM','傾斜計算のアルゴリズム',
-            ['Horn法（推奨・既定。3×3加重差分）',
-             '中央差分法（従来互換。v0.9.4以前の既定）'],defaultValue=0)
-        self.addParameter(slope_algorithm)
         self.addParameter(QgsProcessingParameterBoolean('ELEV_AUTO',
             '標高色の下限/上限を自動検出する（対象範囲の実際の標高min/maxに'
             '下記の余白を加えて使用。ELEV_MIN/ELEV_MAXの数値は無視されます）',
@@ -202,12 +246,6 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterNumber.Double,50.,minValue=0.,maxValue=1000.)
         elev_margin.setFlags(elev_margin.flags() | Qgis.ProcessingParameterFlag.Advanced)
         self.addParameter(elev_margin)
-        self.addParameter(QgsProcessingParameterEnum('RENDER_MODE','描画方式',
-            ['独自方式 v0.4互換','FMEマニュアル方式'],defaultValue=0))
-        self.addParameter(QgsProcessingParameterEnum('LEGACY_PRESET','独自方式の色設定',
-            ['従来標準','カスタム','従来淡色','従来地形強調','グレースケール'],defaultValue=0))
-        self.addParameter(QgsProcessingParameterEnum('FME_STRETCH','FME RGBストレッチ',
-            ['なし','長野県実績値（R 65–234、G 57–229、B 66–216）','カスタム'],defaultValue=1))
         for name,label,rgb in LEGACY_PALETTE:
             param=QgsProcessingParameterColor('LEGACY_'+name.upper(),label,QColor(*rgb),opacityEnabled=False)
             param.setFlags(param.flags() | Qgis.ProcessingParameterFlag.Advanced);self.addParameter(param)
@@ -223,16 +261,6 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         for name,label,value,lo,hi in COLOR_NUMBERS:
             self.addParameter(QgsProcessingParameterNumber(name.upper(),label,
                 QgsProcessingParameterNumber.Double,value,minValue=lo,maxValue=hi))
-        self.addParameter(QgsProcessingParameterBoolean('METRES',
-            '全入力の標高がm単位で、鉛直基準が統一済みであることを確認した',False))
-        nd=QgsProcessingParameterNumber('NODATA','入力NoDataを上書き（空欄なら入力の定義を使用）',
-            QgsProcessingParameterNumber.Double,optional=True)
-        nd.setFlags(nd.flags() | Qgis.ProcessingParameterFlag.Advanced)
-        self.addParameter(nd)
-        compression=QgsProcessingParameterEnum('COMPRESSION','図郭GeoTIFFの圧縮',
-            ['DEFLATE（可逆圧縮）','NONE（非圧縮）'],defaultValue=0)
-        compression.setFlags(compression.flags() | Qgis.ProcessingParameterFlag.Advanced)
-        self.addParameter(compression)
         self.addParameter(QgsProcessingParameterBoolean('XYZ','XYZタイルも生成する（EPSG:3857、256px）',True))
         self.addParameter(QgsProcessingParameterEnum('XYZ_FORMAT','XYZ画像形式',
             ['PNG','WebP（要GDAL WEBPドライバ）'],defaultValue=0))
@@ -252,6 +280,10 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             self.addParameter(QgsProcessingParameterNumber(key,label,
                 QgsProcessingParameterNumber.Integer,default,minValue=lo,maxValue=hi))
         self.addOutput(QgsProcessingOutputFolder('XYZ_FOLDER','XYZタイルフォルダー'))
+        compression=QgsProcessingParameterEnum('COMPRESSION','図郭GeoTIFFの圧縮',
+            ['DEFLATE（可逆圧縮）','NONE（非圧縮）'],defaultValue=0)
+        compression.setFlags(compression.flags() | Qgis.ProcessingParameterFlag.Advanced)
+        self.addParameter(compression)
         self.addParameter(QgsProcessingParameterBoolean('MERGED_GEOTIFF',
             '図郭タイルに加えて、全域CS方式画像を結合済み1枚のGeoTIFFとしても出力する',True))
         self.addParameter(QgsProcessingParameterBoolean('LOAD','終了後に全域CS画像と図郭索引を読み込む',True))
@@ -261,6 +293,19 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         self.addOutput(QgsProcessingOutputVectorLayer('SHEET_INDEX','出力図郭索引'))
         self.addOutput(QgsProcessingOutputFile('MANIFEST','処理記録'))
         self.addOutput(QgsProcessingOutputFolder('INPUT_WORK','入力変換の中間成果・点群分類結果'))
+        # v0.12.0: 処理画面には区切り線や見出しを入れる仕組みがないため、表示名の先頭に
+        # 区分を付けて、関係する項目のまとまりを示す（ユーザー要望、2026-10-03）。
+        # 内部名（パラメーター名）は変えないので、保存済みの設定・履歴・バッチ・モデラーは
+        # そのまま使える。
+        for definition in self.parameterDefinitions():
+            section=parameter_section(definition.name())
+            label=definition.description()
+            if section and not label.startswith('【'):
+                for redundant in SECTION_REDUNDANT_PREFIXES.get(section,()):
+                    if label.startswith(redundant):
+                        label=label[len(redundant):]
+                        break
+                definition.setDescription('【'+section+'】'+label)
 
     def checkParameterValues(self, parameters, context):
         # v0.11.0: 個別ファイル選択（FILES）は、QGIS標準の検査が選択した各ファイルを
