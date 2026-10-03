@@ -9,6 +9,22 @@ except ImportError:
 
 @unittest.skipUnless(AVAILABLE,'QGIS is not installed')
 class QgisTests(unittest.TestCase):
+    def test_file_selection_limit_checked_before_qgis_validation(self):
+        # v0.10.2: 個別選択の件数・存在は、QGIS標準の検査（各ファイルを開く）より前に検査する
+        import tempfile
+        from pathlib import Path
+        from csmap_sheets.algorithm import CSMapAlgorithm, INDIVIDUAL_FILE_SELECTION_LIMIT
+        alg=CSMapAlgorithm();alg.initAlgorithm()
+        context=QgsProcessingContext()
+        with tempfile.TemporaryDirectory() as tmp:
+            files=[]
+            for i in range(INDIVIDUAL_FILE_SELECTION_LIMIT+1):
+                path=Path(tmp)/f'{i:03d}.xml';path.write_text('<x/>');files.append(str(path))
+            ok,message=alg.checkParameterValues({'FILES':files},context)
+            self.assertFalse(ok);self.assertIn('入力フォルダー',message)
+            ok,message=alg.checkParameterValues({'FILES':[str(Path(tmp)/'missing.xml')]},context)
+            self.assertFalse(ok);self.assertIn('見つかりません',message)
+
     def test_algorithm_parameters(self):
         from csmap_sheets.algorithm import CSMapAlgorithm
         alg=CSMapAlgorithm()
