@@ -10,10 +10,17 @@ v0.10.2（ユーザー要望、2026-10-03）。推定は「入力が持つ確か
    （JGD2000/JGD2011）を区別できないため出力座標系には使わず、1との照合と
    エラー時の案内にだけ使う。
 
+4. 国土地理院DEM（基盤地図情報 数値標高モデル、GML）は、ファイル名とGMLの<mesh>から
+   地域メッシュ番号を読み、メッシュ→系の対応表（data/jpr_zone_mesh.csv、e-Statの
+   市区町村別メッシュ・コード一覧から tools/build_jpr_zone_table.py で作成）で系を決める。
+   測地系はGMLのsrsName（JGD2000／JGD2011・JGD2024）で決める。
+
 複数のファイルで系が食い違う場合は推定しない（呼び出し側が明示指定を求める）。
 """
 import os
+import re
 import struct
+import zipfile
 from pathlib import Path
 
 ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X',
@@ -149,6 +156,126 @@ def lem_zones(paths, recursive, limit=PROBE_FILE_LIMIT):
     return zones
 
 
+# ---- 国土地理院DEM（v0.10.2）------------------------------------------------------
+
+ZONE_TABLE = Path(__file__).resolve().parent/'data'/'jpr_zone_mesh.csv'
+GSI_HEAD_BYTES = 65536
+_GSI_NAME = re.compile(r'FG-GML-(\d{4})-?(\d{2})(?:-(\d{2}))?-DEM', re.I)
+_GSI_MESH = re.compile(rb'<(?:[\w.-]+:)?mesh>\s*(\d{6}|\d{8})\s*</', re.I)
+_GSI_SRS = re.compile(rb'srsName\s*=\s*["\']([^"\']+)["\']', re.I)
+_zone_table = None
+
+
+def load_zone_table(path=None):
+    """メッシュ→系の対応表を読む（初回のみ）。{メッシュ番号: frozenset(系番号)}。"""
+    global _zone_table
+    if path is None and _zone_table is not None:
+        return _zone_table
+    table = {}
+    with open(path or ZONE_TABLE, encoding='utf-8') as f:
+        if f.readline().strip() != 'mesh,zones':
+            raise ValueError('系の対応表の形式が想定と異なります')
+        for line in f:
+            mesh, zones = line.strip().split(',')
+            table[mesh] = frozenset(int(z) for z in zones.split('|'))
+    if path is None:
+        _zone_table = table
+    return table
+
+
+def zones_of_mesh(mesh, table=None):
+    """地域メッシュ番号（6桁=2次、8桁=3次）の系の集合。分からなければ None。"""
+    table = load_zone_table() if table is None else table
+    if len(mesh) == 8:
+        if mesh in table:
+            return table[mesh]
+        return table.get(mesh[:6])
+    if len(mesh) == 6:
+        if mesh in table:
+            return table[mesh]
+        found = [z for m, z in table.items() if len(m) == 8 and m.startswith(mesh)]
+        return frozenset().union(*found) if found else None
+    return None
+
+
+def mesh_from_gsi_name(name):
+    """FG-GML-5338-44-00-DEM1A… → '53384400'、FG-GML-533844-DEM1A… → '533844'。"""
+    match = _GSI_NAME.search(Path(name).name)
+    if match is None:
+        return None
+    return match.group(1)+match.group(2)+(match.group(3) or '')
+
+
+def _gsi_head(data):
+    mesh = _GSI_MESH.search(data)
+    srs = _GSI_SRS.search(data)
+    return (mesh.group(1).decode() if mesh else None,
+            srs.group(1).decode('ascii', 'replace').lower() if srs else '')
+
+
+def gsi_records(paths, recursive, limit=PROBE_FILE_LIMIT):
+    """国土地理院DEMの各ファイル（ZIP内を含む）から (表示名, 名前のメッシュ, GMLのメッシュ, srsName)。"""
+    records = []
+    for path in _iter_files(paths, ('.xml', '.zip'), recursive, limit):
+        if path.suffix.lower() == '.zip':
+            try:
+                with zipfile.ZipFile(path) as archive:
+                    names = [n for n in archive.namelist() if n.lower().endswith('.xml')]
+                    for name in names[:max(0, limit-len(records))]:
+                        with archive.open(name) as f:
+                            head = f.read(GSI_HEAD_BYTES)
+                        records.append((f'{path.name}:{name}', mesh_from_gsi_name(name)
+                                        or mesh_from_gsi_name(path.name), *_gsi_head(head)))
+            except (OSError, zipfile.BadZipFile):
+                continue
+        else:
+            with open(path, 'rb') as f:
+                head = f.read(GSI_HEAD_BYTES)
+            records.append((path.name, mesh_from_gsi_name(path.name), *_gsi_head(head)))
+        if len(records) >= limit:
+            break
+    return records[:limit]
+
+
+def infer_gsi_zone(paths, recursive, table=None):
+    """国土地理院DEMの系と測地系を決める。戻り値: (系, 'jgd2000'|'jgd2011', 根拠) または (None, None, 理由)。"""
+    records = gsi_records(paths, recursive)
+    if not records:
+        return None, None, '国土地理院DEMのファイル（.xml／.zip）が見つかりません'
+    zones, datums, meshes = set(), set(), set()
+    for label, name_mesh, gml_mesh, srs in records:
+        if name_mesh and gml_mesh and not (name_mesh.startswith(gml_mesh) or gml_mesh.startswith(name_mesh)):
+            return None, None, f'ファイル名とGMLのメッシュ番号が一致しません（{label}：{name_mesh}／{gml_mesh}）'
+        mesh = gml_mesh if gml_mesh and len(gml_mesh) >= len(name_mesh or '') else name_mesh
+        if not mesh:
+            continue
+        found = zones_of_mesh(mesh, table)
+        if found is None:
+            continue
+        if 0 in found:
+            return None, None, f'メッシュ{mesh}は境界未定地域を含むため、系を決められません'
+        zones |= found
+        meshes.add(mesh)
+        if 'jgd2000' in srs:
+            datums.add('jgd2000')
+        elif 'jgd2011' in srs or 'jgd2024' in srs:
+            datums.add('jgd2011')
+    if not zones:
+        return None, None, '地域メッシュ番号から系を決められません（対応表に無いメッシュ、またはメッシュ番号が読めません）'
+    if len(zones) > 1:
+        listed = '、'.join(zone_label(z) for z in sorted(zones))
+        return None, None, f'入力の範囲が複数の系にまたがっています（{listed}）'
+    if len(datums) > 1:
+        return None, None, 'JGD2000とJGD2011のファイルが混在しています'
+    if not datums:
+        return None, None, 'GMLの測地系（srsName）を読めません'
+    zone = next(iter(zones))
+    sample = sorted(meshes)[0]
+    more = '' if len(records) < PROBE_FILE_LIMIT else f'、先頭{PROBE_FILE_LIMIT}件で確認'
+    return zone, next(iter(datums)), (f'地域メッシュ（{sample}など{len(meshes)}件{more}）が'
+                                      f'{zone_label(zone)}の区域です')
+
+
 def infer_target_crs(mode, input_crs_wkt, paths, recursive, osr, zone_of):
     """ラスター以外の入力から出力の平面直角座標系を推定する。
 
@@ -156,6 +283,20 @@ def infer_target_crs(mode, input_crs_wkt, paths, recursive, osr, zone_of):
     （pipeline._jpr_zone_of。循環importを避けるため引数で受け取る）。
     戻り値: (wkt, 根拠の説明) で成功、(None, 理由) で失敗。
     """
+    if mode == 'gsi':
+        if input_crs_wkt:
+            srs = osr.SpatialReference()
+            if srs.SetFromUserInput(input_crs_wkt) != 0 or not srs.IsGeographic():
+                return None, ('国土地理院DEMでは「入力の水平座標系」は空欄にしてください'
+                              '（ファイル内の緯度経度の座標系を使います）')
+        zone, datum, reason = infer_gsi_zone(paths, recursive)
+        if zone is None:
+            return None, reason
+        code = (6668 if datum == 'jgd2011' else 2442)+zone
+        srs = osr.SpatialReference()
+        if srs.ImportFromEPSG(code) != 0:
+            return None, f'EPSG:{code}を作成できません'
+        return srs.ExportToWkt(), reason+f'（{"JGD2011" if datum == "jgd2011" else "JGD2000"}、EPSG:{code}）'
     lem = lem_zones(paths, recursive) if mode == 'forest' else {}
     if input_crs_wkt:
         srs = osr.SpatialReference()
@@ -209,6 +350,4 @@ def infer_target_crs(mode, input_crs_wkt, paths, recursive, osr, zone_of):
         return None, (f'LEMのメタデータでは{zone_label(zone)}です。測地系はメタデータから判断できないため、'
                       f'「入力の水平座標系」に JGD2011 なら EPSG:{jgd2011}、JGD2000 なら EPSG:{jgd2000} を'
                       '指定してください（出力座標系もそれに合わせて自動で決まります）')
-    if mode == 'gsi':
-        return None, '国土地理院DEMの系の自動推定は未対応です'
     return None, '「入力の水平座標系」が未指定です'
