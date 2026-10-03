@@ -78,6 +78,9 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             '\n標高色の下限/上限は「標高色の下限/上限を自動検出する」を有効にすると、対象範囲を再投影・'
             'モザイク化した後に実際の標高min/maxを検出し、余白（既定50m）を加えて自動設定します（ELEV_MIN/MAXの'
             '数値は無視されます）。組込み設定プロファイルを選んだ場合はプロファイル側の値が優先され、自動検出は無効になります。'
+            '\n曲率用平滑化の標準偏差（σ）は「地上距離（m）」（既定3m）と「計算格子の画素数（px）」から指定方式を選べます。'
+            '計算格子は出力セルサイズで再投影したDEMの格子です。σ=3pxは、0.5m格子で1.5m、1m格子で3m、2m格子で6mに相当します。'
+            '方式ごとに値を保持し、選んだ方式の値だけを使います。組込みのFME設定プロファイルはm方式3mを使います。'
             '\n県全域は図郭単位で処理し、全域をメモリーへ展開しません。系番号は選択した平面直角座標系から自動決定します。'
             '\n設定プロファイルは処理設定をJSONで保存・読込みできます。入力・出力・CRS・確認欄は安全のため保存対象外です。'
             '\n図郭レベルはファイル寸法・番号の選択で、DEM精度の保証ではありません。'
@@ -166,15 +169,26 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
              '1000：東西800m × 南北600m','500：東西400m × 南北300m'],defaultValue=0))
         for name,label,value,lo,hi in [
             ('CELL','出力セルサイズ（m）',1.,.01,100.),
-            ('SIGMA','曲率用平滑化の標準偏差（m）',3.,0.,1000.),
+            ('SIGMA','曲率用平滑化の標準偏差（m。指定方式が「地上距離」のとき使用。0で平滑化なし）',3.,0.,1000.),
             ('CURVE_LIMIT','曲率色の飽和値（±、1/m。FME資料の「±10」に対応する値。'
              '同梱FMWのKERNEL_DIVISOR=cell_size²×0.01から換算・確認済み）',.1,.000001,100.),
             ('SLOPE_MAX','傾斜の暗さが飽和する角度（度。色調の設定であり、傾斜の計算方式とは別）',60.,.1,90.),
             ('ELEV_MIN','標高色の下限（m）',200.,-10000.,10000.),
             ('ELEV_MAX','標高色の上限（m）',2000.,-10000.,10000.),
         ]:
+            if name=='SIGMA':
+                # v0.12.0: σの指定方式。処理画面は選択に応じて単位表示を切り替えられないため、
+                # 方式ごとに入力欄を分け、選んだ方式の値だけを使う（もう一方の値は保持する）。
+                # 組であることが分かるよう、指定方式・m・pxの3欄を続けて並べる。
+                self.addParameter(QgsProcessingParameterEnum('SIGMA_UNIT','曲率用平滑化の指定方式',
+                    ['地上距離（m）（既定。格子が変わっても同じ地形の大きさを平滑化）',
+                     '計算格子の画素数（px）（格子が細かいほど細かい起伏を残す）'],defaultValue=0))
             self.addParameter(QgsProcessingParameterNumber(name,label,
                 QgsProcessingParameterNumber.Double,value,minValue=lo,maxValue=hi))
+            if name=='SIGMA':
+                self.addParameter(QgsProcessingParameterNumber('SIGMA_PX',
+                    '曲率用平滑化の標準偏差（計算格子の画素数。指定方式が「画素数」のとき使用。0で平滑化なし）',
+                    QgsProcessingParameterNumber.Double,3.,minValue=0.,maxValue=128.))
         slope_algorithm=QgsProcessingParameterEnum('SLOPE_ALGORITHM','傾斜計算のアルゴリズム',
             ['Horn法（推奨・既定。3×3加重差分）',
              '中央差分法（従来互換。v0.9.4以前の既定）'],defaultValue=0)
@@ -448,6 +462,8 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             sheet_level=[5000,2500,1000,500][self.parameterAsEnum(parameters,'LEVEL',context)],
             cell_size=self.parameterAsDouble(parameters,'CELL',context),
             sigma_m=self.parameterAsDouble(parameters,'SIGMA',context),
+            sigma_unit=['m','px'][self.parameterAsEnum(parameters,'SIGMA_UNIT',context)],
+            sigma_px=self.parameterAsDouble(parameters,'SIGMA_PX',context),
             curvature_limit=self.parameterAsDouble(parameters,'CURVE_LIMIT',context),
             slope_max=self.parameterAsDouble(parameters,'SLOPE_MAX',context),
             slope_algorithm=['horn','central_difference'][self.parameterAsEnum(parameters,'SLOPE_ALGORITHM',context)],
@@ -475,7 +491,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         if profile_choice in (1,2):
             # 傾斜計算アルゴリズム(SLOPE_ALGORITHM)はプロファイルで上書きせず、
             # 利用者の選択（既定Horn法）をそのまま使う（v0.10.0、ユーザー決定）。
-            c.update(cell_size=1. if profile_choice==1 else 2.,sigma_m=3.,curvature_limit=.1,
+            c.update(cell_size=1. if profile_choice==1 else 2.,sigma_m=3.,sigma_unit='m',curvature_limit=.1,
                      slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,
                      render_mode='fme_manual',fme=fme)
             feedback.pushInfo('組込み設定プロファイルを適用しました: '+('標準CS・1m' if profile_choice==1 else '試験処理・2m'))
@@ -483,7 +499,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             # Separate, opt-in provisional value (not the manual's own figure).
             # Never overwrites the FME manual default
             # (profile_choice 1/2) silently; the person must choose this profile explicitly.
-            c.update(cell_size=1.,sigma_m=3.,curvature_limit=.03,
+            c.update(cell_size=1.,sigma_m=3.,sigma_unit='m',curvature_limit=.03,
                      slope_max=60.,elevation_range=[200.,2000.],elevation_range_auto=False,
                      render_mode='fme_manual',fme=fme)
             feedback.pushInfo('組込み設定プロファイルを適用しました: 林野庁近似設定（暫定）（曲率±0.03）')
@@ -497,6 +513,13 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             unknown=set(saved)-set(c)-protected-{'color_model'}
             if unknown:raise QgsProcessingException('設定プロファイルに不明な項目があります: '+repr(sorted(unknown)))
             c.update({k:v for k,v in saved.items() if k in c and k not in protected})
+            if 'sigma_unit' not in saved:
+                # v0.12.0より前のプロファイルはσを地上距離（m）で保存している。画面の選択に
+                # かかわらずm方式で読み、過去の計算条件を再現する。
+                c['sigma_unit']='m'
+                if self.parameterAsEnum(parameters,'SIGMA_UNIT',context)!=0:
+                    feedback.pushWarning('この設定プロファイルにはσの指定方式（sigma_unit）がないため、'
+                                         '地上距離（m）として読みます（σ='+str(c['sigma_m'])+'m）。')
             if 'render_mode' not in saved and saved.get('color_model') in ('legacy','fme'):
                 c['render_mode']={'legacy':'independent_v040','fme':'fme_manual'}[saved['color_model']]
             if 'render_mode' not in saved and 'color_model' not in saved:
@@ -510,11 +533,13 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         except (ValueError,TypeError,OSError) as exc:raise QgsProcessingException(str(exc)) from exc
         from .engine.pipeline import SLOPE_ALGORITHM_NAMES
         feedback.pushInfo('傾斜計算方式: '+SLOPE_ALGORITHM_NAMES[self.settings['slope_algorithm']])
+        from .engine.pipeline import smoothing_summary
+        feedback.pushInfo(smoothing_summary(self.settings))
         save_value=parameters.get('SAVE_PROFILE')
         if not QgsVariantUtils.isNull(save_value) and str(save_value).strip():
             save_path=Path(self.parameterAsFileOutput(parameters,'SAVE_PROFILE',context))
             excluded={'inputs','output_dir','target_crs','plane_zone','input_type','confirm_elevation_metres'}
-            payload={'schema':'csmap-settings-profile-v3','settings':{k:v for k,v in self.settings.items() if k not in excluded}}
+            payload={'schema':'csmap-settings-profile-v4','settings':{k:v for k,v in self.settings.items() if k not in excluded}}
             try:save_path.write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
             except OSError as exc:raise QgsProcessingException('設定プロファイルを保存できません: '+str(exc)) from exc
             feedback.pushInfo('設定プロファイルを保存しました: '+str(save_path))
