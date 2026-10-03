@@ -243,21 +243,27 @@ def write_xyz(source, destination, c, gdal, osr, feedback=None):
         src = None
 
 
-if __name__ == '__main__':
+def build_cli_parser():
+    """CLIの引数定義。既定値はDEFAULTSから取り、プラグイン本体と食い違わないようにする
+    （v0.10.0まではCLIだけ--max-zoomの既定が18のまま残っていた）。"""
     import argparse
-    from osgeo import gdal, osr
     p = argparse.ArgumentParser(description='Existing CS RGBA GeoTIFF -> XYZ PNG/WebP')
     p.add_argument('--input',required=True)
     p.add_argument('--output',required=True,help='New folder, must not exist')
-    p.add_argument('--min-zoom',type=int,default=12)
-    p.add_argument('--max-zoom',type=int,default=18)
-    p.add_argument('--max-tiles',type=int,default=100000)
-    p.add_argument('--format',choices=XYZ_FORMATS,default='png')
+    p.add_argument('--min-zoom',type=int,default=DEFAULTS['xyz_min_zoom'])
+    p.add_argument('--max-zoom',type=int,default=DEFAULTS['xyz_max_zoom'])
+    p.add_argument('--max-tiles',type=int,default=DEFAULTS['xyz_max_tiles'])
+    p.add_argument('--format',choices=XYZ_FORMATS,default=DEFAULTS['xyz_format'])
     p.add_argument('--webp-lossy',action='store_true',
                    help='WebP選択時に非可逆(lossy)で出力する（既定は可逆/LOSSLESS=TRUE）')
-    p.add_argument('--webp-quality',type=int,default=75,
+    p.add_argument('--webp-quality',type=int,default=DEFAULTS['xyz_webp_quality'],
                    help='--webp-lossy指定時のQUALITY(1-100、既定75、GDAL WEBPドライバのデフォルトと同じ)')
-    a = p.parse_args()
+    return p
+
+
+if __name__ == '__main__':
+    from osgeo import gdal, osr
+    a = build_cli_parser().parse_args()
     gdal.UseExceptions()
     write_xyz(a.input,a.output,dict(xyz_min_zoom=a.min_zoom,xyz_max_zoom=a.max_zoom,
               xyz_max_tiles=a.max_tiles,xyz_format=a.format,
