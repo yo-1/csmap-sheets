@@ -301,5 +301,20 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(json.loads((root/"result/run.json").read_text(encoding="utf-8"))["status"], "completed")
 
 
+
+class VersionDisplayTests(unittest.TestCase):
+    def test_version_banner_shows_name_and_version(self):
+        from csmap_sheets.engine.pipeline import version_banner, VERSION
+        banner=version_banner()
+        self.assertIn('図郭対応CS立体図作成プラグイン（CS Map Sheets）',banner)
+        self.assertTrue(banner.endswith(' v'+VERSION))
+
+    def test_version_matches_metadata(self):
+        # 画面・ログ・run.jsonに出る版（VERSION）と、プラグイン管理画面に出る版（metadata.txt）の一致
+        from csmap_sheets.engine.pipeline import VERSION
+        meta=Path(__file__).resolve().parents[1]/'metadata.txt'
+        lines=[l for l in meta.read_text(encoding='utf-8').splitlines() if l.startswith('version=')]
+        self.assertEqual(lines,['version='+VERSION])
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -19,6 +19,13 @@ from .progress import report, check_cancel, gdal_progress, CancelledError
 from .color_fme import render_fme, rendering_record as fme_rendering_record, validate_fme_settings
 
 VERSION = "0.10.0"
+PLUGIN_TITLE_JA = "図郭対応CS立体図作成プラグイン（CS Map Sheets）"
+
+
+def version_banner():
+    """画面の説明欄と実行ログの先頭に出す版表示。VERSIONから組み立てるため、
+    版を上げるときに画面側の文言を書き換える必要はない。"""
+    return f"{PLUGIN_TITLE_JA} v{VERSION}"
 from .xyz_tiles import DEFAULTS as XYZ_DEFAULTS, validate_xyz, write_xyz, precheck_xyz_tile_count
 
 from .input_sources import DEFAULTS as INPUT_DEFAULTS, validate_input, discover, prepare_inputs

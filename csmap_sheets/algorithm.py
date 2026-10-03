@@ -61,7 +61,9 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
     def createInstance(self):return CSMapAlgorithm()
     def tags(self):return ['CS','DEM','国土基本図','図郭','立体図','色調','merge']
     def shortHelpString(self):
+        from .engine.pipeline import version_banner
         return (
+            version_banner()+'\n'
             '複数DEM→平面直角座標系へ整合→独自CS方式画像→国土基本図図郭GeoTIFF→XYZタイル（EPSG:3857、PNGまたはWebP）。'
             '入力形式を選び、ファイルまたはフォルダーを指定します。LAS/LAZと不規則テキスト点には外部PDAL 2.9以降が必要です。'
             '\n入力形式に関係する設定だけを使用します。森林航空レーザ成果はLEM、CSV/XYZ格子、TIFF+TFW、GeoTIFFとZIPを自動判別します。'
@@ -249,6 +251,8 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         from .engine.pipeline import validate_config, COLOR_DEFAULTS
         from .engine.color_fme import FME_COLORS, FME_WEIGHTS
         from .engine.input_sources import explicit_file_parameter, _absolute_path, EXTENSIONS
+        from .engine.pipeline import version_banner
+        feedback.pushInfo(version_banner())
         mode=['raster','gsi','text','lidar','forest'][self.parameterAsEnum(parameters,'INPUT_TYPE',context)]
         layers=self.parameterAsLayerList(parameters,'DEMS',context) if mode=='raster' else []
         # Read the raw FILES value only. In QGIS 3.44, QgsProcessingParameters
