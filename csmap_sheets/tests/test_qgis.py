@@ -10,7 +10,7 @@ except ImportError:
 @unittest.skipUnless(AVAILABLE,'QGIS is not installed')
 class QgisTests(unittest.TestCase):
     def test_file_selection_limit_checked_before_qgis_validation(self):
-        # v0.10.2: 個別選択の件数・存在は、QGIS標準の検査（各ファイルを開く）より前に検査する
+        # v0.11.0: 個別選択の件数・存在は、QGIS標準の検査（各ファイルを開く）より前に検査する
         import tempfile
         from pathlib import Path
         from csmap_sheets.algorithm import CSMapAlgorithm, INDIVIDUAL_FILE_SELECTION_LIMIT

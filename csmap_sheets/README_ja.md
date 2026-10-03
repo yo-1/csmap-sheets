@@ -6,7 +6,7 @@
 
 # CS Map Sheets — QGISプラグイン
 
-v0.10.1／QGIS 3.44向け試作版／2026-10-03
+v0.11.0／QGIS 3.44向け試作版／2026-10-03
 
 Copyright (C) 2026 Yoichi Wada. GNU GPL v3.0 only.
 
@@ -78,7 +78,7 @@ FME資料の曲率表記は通常−10～+10（10m DEMは−5～+5）です。�
 
 ## インストール
 
-1. プラグインのZIP（例：`csmap_sheets-v0.10.1.zip`）を、GitHubの「Releases」から入手します。ZIPは解凍しません。
+1. プラグインのZIP（例：`csmap_sheets-v0.11.0.zip`）を、GitHubの「Releases」から入手します。ZIPは解凍しません。
 2. QGISで「プラグイン」→「プラグインの管理とインストール」を開きます。
 3. 「ZIPからインストール」でこのZIPを選択し、インストールします。
 4. インストール済み一覧で「CS Map Sheets」を有効にします。
