@@ -20,7 +20,7 @@ from qgis.core import (
 # Processingフレームワークが実行時に選択件数分のレイヤー解決を試みる挙動により、
 # 件数超過時にQGISが長時間「応答なし」になることが確認されている（詳細は
 # prepareAlgorithm()内のコメントを参照）。暫定値であり、実運用での再調整を想定。
-# v0.10.2: 実機で98件の選択でも「応答なし」になったため、100件から30件に下げた
+# v0.11.0: 実機で98件の選択でも「応答なし」になったため、100件から30件に下げた
 # （ユーザー報告、2026-10-03）。あわせてcheckParameterValues()で件数を先に検査する。
 INDIVIDUAL_FILE_SELECTION_LIMIT = 30
 
@@ -249,7 +249,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         self.addOutput(QgsProcessingOutputFolder('INPUT_WORK','入力変換の中間成果・点群分類結果'))
 
     def checkParameterValues(self, parameters, context):
-        # v0.10.2: 個別ファイル選択（FILES）は、QGIS標準の検査が選択した各ファイルを
+        # v0.11.0: 個別ファイル選択（FILES）は、QGIS標準の検査が選択した各ファイルを
         # レイヤーとして開こうとするため、国土地理院のXMLのように開くのが重いファイルを
         # 多数選ぶと主スレッドが「応答なし」になる（推測。98件で実測、2026-10-03）。
         # 件数と存在だけを先にこちらで検査し、標準の検査からFILESを外す。
@@ -352,7 +352,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             # あくまで「入力が既にJPRゾーンの1つである場合にそれを推定するだけ」で
             # あり、任意の座標系から最寄りのゾーンへ変換・推測することはしない
             # （黙ったフォールバックは行わない設計方針を維持するため）。
-            # v0.10.2: ラスター以外の入力は、「入力の水平座標系」やLAS/LAZのヘッダーが
+            # v0.11.0: ラスター以外の入力は、「入力の水平座標系」やLAS/LAZのヘッダーが
             # 平面直角座標系であればそれを使う。推定しない条件（系の食い違い、測地系が
             # 分からない森林LEMなど）は engine/zone_inference.py を参照。
             if mode != 'raster':

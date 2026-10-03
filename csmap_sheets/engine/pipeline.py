@@ -18,7 +18,7 @@ from .map_sheets import dimensions, cut_sheets, intersecting_sheets
 from .progress import report, check_cancel, gdal_progress, CancelledError
 from .color_fme import render_fme, rendering_record as fme_rendering_record, validate_fme_settings
 
-VERSION = "0.10.1"
+VERSION = "0.11.0"
 PLUGIN_TITLE_JA = "図郭対応CS立体図作成プラグイン（CS Map Sheets）"
 
 

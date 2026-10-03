@@ -36,7 +36,7 @@ def traversal_indices(lo, hi, start, order):
     ranges = {}
     for axis, sign in axes:
         low, high = limits[axis]
-        # v0.10.2: y軸の符号を地理的な向きとして解釈する（-yは南向き＝行番号が増える方向）。
+        # v0.11.0: y軸の符号を地理的な向きとして解釈する（-yは南向き＝行番号が増える方向）。
         # 以前は+/-を行番号の増減として扱っていたため、国土地理院の実データ（+x-y、
         # startPoint 0 0）が最終行から走査され、"Too many GSI tuples"で読み込めなかった。
         increasing = (sign == '+') if axis == 'x' else (sign == '-')
