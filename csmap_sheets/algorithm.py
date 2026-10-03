@@ -20,7 +20,9 @@ from qgis.core import (
 # Processingフレームワークが実行時に選択件数分のレイヤー解決を試みる挙動により、
 # 件数超過時にQGISが長時間「応答なし」になることが確認されている（詳細は
 # prepareAlgorithm()内のコメントを参照）。暫定値であり、実運用での再調整を想定。
-INDIVIDUAL_FILE_SELECTION_LIMIT = 100
+# v0.10.2: 実機で98件の選択でも「応答なし」になったため、100件から30件に下げた
+# （ユーザー報告、2026-10-03）。あわせてcheckParameterValues()で件数を先に検査する。
+INDIVIDUAL_FILE_SELECTION_LIMIT = 30
 
 COLOR_NUMBERS = [
     ('curvature_strength','曲率色の濃さ',1.,0.,1.),
@@ -245,6 +247,27 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         self.addOutput(QgsProcessingOutputVectorLayer('SHEET_INDEX','出力図郭索引'))
         self.addOutput(QgsProcessingOutputFile('MANIFEST','処理記録'))
         self.addOutput(QgsProcessingOutputFolder('INPUT_WORK','入力変換の中間成果・点群分類結果'))
+
+    def checkParameterValues(self, parameters, context):
+        # v0.10.2: 個別ファイル選択（FILES）は、QGIS標準の検査が選択した各ファイルを
+        # レイヤーとして開こうとするため、国土地理院のXMLのように開くのが重いファイルを
+        # 多数選ぶと主スレッドが「応答なし」になる（推測。98件で実測、2026-10-03）。
+        # 件数と存在だけを先にこちらで検査し、標準の検査からFILESを外す。
+        # 未確認事項：固まる箇所が本当にこの標準の検査かは、QGIS実機で確認が必要。
+        from .engine.input_sources import explicit_file_parameter
+        raw_files=parameters.get('FILES')
+        if not QgsVariantUtils.isNull(raw_files) and raw_files not in ('',[]):
+            paths=explicit_file_parameter(raw_files)
+            if len(paths) > INDIVIDUAL_FILE_SELECTION_LIMIT:
+                return False, (f'個別ファイル選択が{len(paths)}件と多いため処理を開始しません'
+                               f'（上限{INDIVIDUAL_FILE_SELECTION_LIMIT}件）。QGISが長時間「応答なし」に'
+                               'なることがあります。「入力フォルダー」を指定する方法に切り替えてください。')
+            missing=[path for path in paths if not Path(path).exists()]
+            if missing:
+                return False, '入力ファイルが見つかりません: '+missing[0]
+            parameters=dict(parameters)
+            parameters.pop('FILES',None)
+        return super().checkParameterValues(parameters, context)
 
     def prepareAlgorithm(self, parameters, context, feedback):
         # Resolve project-owned layers on the main thread; keep plain data only.
