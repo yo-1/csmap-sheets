@@ -156,8 +156,8 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             param.setFlags(param.flags() | Qgis.ProcessingParameterFlag.Advanced)
             self.addParameter(param)
         self.addParameter(QgsProcessingParameterCrs('CRS',
-            '出力の平面直角座標系（空欄なら入力ラスターのCRSから第I～XIX系のいずれかを自動推定。'
-            '入力がラスターでない場合や自動推定できない場合は明示指定が必須）',
+            '出力の平面直角座標系（空欄なら入力ラスターのCRS、入力の水平座標系、LAS/LAZのヘッダーから'
+            '第I～XIX系を自動推定。国土地理院DEMや自動推定できない場合は明示指定が必須）',
             optional=True))
         self.addParameter(QgsProcessingParameterEnum('LEVEL','国土基本図の図郭レベル',
             ['5000：東西4000m × 南北3000m','2500：東西2000m × 南北1500m',
@@ -329,34 +329,47 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             # あくまで「入力が既にJPRゾーンの1つである場合にそれを推定するだけ」で
             # あり、任意の座標系から最寄りのゾーンへ変換・推測することはしない
             # （黙ったフォールバックは行わない設計方針を維持するため）。
-            # ラスター以外の入力種別では、入力のCRSがINPUT_CRSで別途扱われ、かつ
-            # 必ずしも投影済みJPRゾーンとは限らないため自動推定の対象外とする。
+            # v0.10.2: ラスター以外の入力は、「入力の水平座標系」やLAS/LAZのヘッダーが
+            # 平面直角座標系であればそれを使う。推定しない条件（系の食い違い、測地系が
+            # 分からない森林LEMなど）は engine/zone_inference.py を参照。
             if mode != 'raster':
-                raise QgsProcessingException(
-                    '出力座標系（CRS）を明示的に選択してください。ラスター以外の'
-                    '入力種別では自動推定していません。')
-            if not paths:
-                raise QgsProcessingException('入力ファイルまたはフォルダーを指定してください。')
-            from osgeo import gdal as _gdal
-            from .engine.pipeline import infer_target_crs_from_raster
-            from .engine.input_sources import crs_probe_raster
-            try:
-                probe_path=crs_probe_raster(paths[0],self.parameterAsBool(parameters,'RECURSIVE',context),feedback)
-            except ValueError as exc:
-                raise QgsProcessingException(
-                    '出力座標系（CRS）が未指定で、入力「'+paths[0]+'」から自動推定に使える'
-                    'ラスターファイルが見つかりませんでした（'+str(exc)+'）。CRSを明示的に選択してください。')
-            if probe_path!=paths[0]:
-                feedback.pushInfo('入力フォルダー内の先頭のラスターファイルで出力座標系を推定します: '+probe_path)
-            inferred_wkt,reason=infer_target_crs_from_raster(probe_path,_gdal,feedback=feedback)
-            if inferred_wkt is None:
-                raise QgsProcessingException(
-                    '出力座標系（CRS）が未指定で、かつ入力「'+probe_path+'」から'
-                    '自動推定できませんでした（'+reason+'）。CRSを明示的に選択してください。')
-            crs=QgsCoordinateReferenceSystem(inferred_wkt)
-            if not crs.isValid():
-                raise QgsProcessingException('入力から自動推定した出力座標系が無効です: '+probe_path)
-            feedback.pushInfo('出力座標系を入力から自動推定しました（'+probe_path+'）: '+crs.authid())
+                from osgeo import osr as _osr
+                from .engine.pipeline import _jpr_zone_of
+                from .engine.zone_inference import infer_target_crs
+                inferred_wkt,reason=infer_target_crs(
+                    mode,source.toWkt() if source_set else '',paths,
+                    self.parameterAsBool(parameters,'RECURSIVE',context),_osr,_jpr_zone_of)
+                if inferred_wkt is None:
+                    raise QgsProcessingException(
+                        '出力座標系（CRS）を自動推定できませんでした（'+reason+'）。'
+                        '出力の平面直角座標系を明示的に選択してください。')
+                crs=QgsCoordinateReferenceSystem(inferred_wkt)
+                if not crs.isValid():
+                    raise QgsProcessingException('入力から自動推定した出力座標系が無効です。')
+                feedback.pushInfo('出力座標系を自動推定しました: '+crs.authid()+'。'+reason)
+            else:
+                if not paths:
+                    raise QgsProcessingException('入力ファイルまたはフォルダーを指定してください。')
+                from osgeo import gdal as _gdal
+                from .engine.pipeline import infer_target_crs_from_raster
+                from .engine.input_sources import crs_probe_raster
+                try:
+                    probe_path=crs_probe_raster(paths[0],self.parameterAsBool(parameters,'RECURSIVE',context),feedback)
+                except ValueError as exc:
+                    raise QgsProcessingException(
+                        '出力座標系（CRS）が未指定で、入力「'+paths[0]+'」から自動推定に使える'
+                        'ラスターファイルが見つかりませんでした（'+str(exc)+'）。CRSを明示的に選択してください。')
+                if probe_path!=paths[0]:
+                    feedback.pushInfo('入力フォルダー内の先頭のラスターファイルで出力座標系を推定します: '+probe_path)
+                inferred_wkt,reason=infer_target_crs_from_raster(probe_path,_gdal,feedback=feedback)
+                if inferred_wkt is None:
+                    raise QgsProcessingException(
+                        '出力座標系（CRS）が未指定で、かつ入力「'+probe_path+'」から'
+                        '自動推定できませんでした（'+reason+'）。CRSを明示的に選択してください。')
+                crs=QgsCoordinateReferenceSystem(inferred_wkt)
+                if not crs.isValid():
+                    raise QgsProcessingException('入力から自動推定した出力座標系が無効です: '+probe_path)
+                feedback.pushInfo('出力座標系を入力から自動推定しました（'+probe_path+'）: '+crs.authid())
         render_mode=['independent_v040','fme_manual'][self.parameterAsEnum(parameters,'RENDER_MODE',context)]
         legacy_preset=self.parameterAsEnum(parameters,'LEGACY_PRESET',context)
         color=dict(COLOR_DEFAULTS)
