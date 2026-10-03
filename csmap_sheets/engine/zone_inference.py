@@ -11,7 +11,7 @@ v0.10.2（ユーザー要望、2026-10-03）。推定は「入力が持つ確か
    エラー時の案内にだけ使う。
 
 4. 国土地理院DEM（基盤地図情報 数値標高モデル、GML）は、ファイル名とGMLの<mesh>から
-   地域メッシュ番号を読み、メッシュ→系の対応表（data/jpr_zone_mesh.csv、e-Statの
+   地域メッシュ番号を読み、メッシュ→系の対応表（data/jpr_zone_mesh.csv、総務省統計局の
    市区町村別メッシュ・コード一覧から tools/build_jpr_zone_table.py で作成）で系を決める。
    測地系はGMLのsrsName（JGD2000／JGD2011・JGD2024）で決める。
 
