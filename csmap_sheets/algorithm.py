@@ -176,16 +176,19 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             ('ELEV_MIN','標高色の下限（m）',200.,-10000.,10000.),
             ('ELEV_MAX','標高色の上限（m）',2000.,-10000.,10000.),
         ]:
+            if name=='SIGMA':
+                # v0.12.0: σの指定方式。処理画面は選択に応じて単位表示を切り替えられないため、
+                # 方式ごとに入力欄を分け、選んだ方式の値だけを使う（もう一方の値は保持する）。
+                # 組であることが分かるよう、指定方式・m・pxの3欄を続けて並べる。
+                self.addParameter(QgsProcessingParameterEnum('SIGMA_UNIT','曲率用平滑化の指定方式',
+                    ['地上距離（m）（既定。格子が変わっても同じ地形の大きさを平滑化）',
+                     '計算格子の画素数（px）（格子が細かいほど細かい起伏を残す）'],defaultValue=0))
             self.addParameter(QgsProcessingParameterNumber(name,label,
                 QgsProcessingParameterNumber.Double,value,minValue=lo,maxValue=hi))
-        # v0.12.0: σの指定方式。処理画面は選択に応じて単位表示を切り替えられないため、
-        # 方式ごとに入力欄を分け、選んだ方式の値だけを使う（もう一方の値は保持する）。
-        self.addParameter(QgsProcessingParameterEnum('SIGMA_UNIT','曲率用平滑化の指定方式',
-            ['地上距離（m）（既定。格子が変わっても同じ地形の大きさを平滑化）',
-             '計算格子の画素数（px）（格子が細かいほど細かい起伏を残す）'],defaultValue=0))
-        self.addParameter(QgsProcessingParameterNumber('SIGMA_PX',
-            '曲率用平滑化の標準偏差（計算格子の画素数。指定方式が「画素数」のとき使用。0で平滑化なし）',
-            QgsProcessingParameterNumber.Double,3.,minValue=0.,maxValue=128.))
+            if name=='SIGMA':
+                self.addParameter(QgsProcessingParameterNumber('SIGMA_PX',
+                    '曲率用平滑化の標準偏差（計算格子の画素数。指定方式が「画素数」のとき使用。0で平滑化なし）',
+                    QgsProcessingParameterNumber.Double,3.,minValue=0.,maxValue=128.))
         slope_algorithm=QgsProcessingParameterEnum('SLOPE_ALGORITHM','傾斜計算のアルゴリズム',
             ['Horn法（推奨・既定。3×3加重差分）',
              '中央差分法（従来互換。v0.9.4以前の既定）'],defaultValue=0)
