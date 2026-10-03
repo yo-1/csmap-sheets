@@ -156,8 +156,8 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             param.setFlags(param.flags() | Qgis.ProcessingParameterFlag.Advanced)
             self.addParameter(param)
         self.addParameter(QgsProcessingParameterCrs('CRS',
-            '出力の平面直角座標系（空欄なら入力ラスターのCRS、入力の水平座標系、LAS/LAZのヘッダーから'
-            '第I～XIX系を自動推定。国土地理院DEMや自動推定できない場合は明示指定が必須）',
+            '出力の平面直角座標系（空欄なら入力ラスターのCRS、入力の水平座標系、LAS/LAZのヘッダー、'
+            '国土地理院DEMの地域メッシュ番号から第I～XIX系を自動推定。推定できない場合は明示指定が必須）',
             optional=True))
         self.addParameter(QgsProcessingParameterEnum('LEVEL','国土基本図の図郭レベル',
             ['5000：東西4000m × 南北3000m','2500：東西2000m × 南北1500m',

@@ -203,3 +203,107 @@ class RealOsrTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def latlon_to_mesh8(lat, lon):
+    p = int(lat*1.5); u = int(lon-100)
+    lat_r = lat - p/1.5; lon_r = lon - (u+100)
+    q = int(lat_r/(5/60)); v = int(lon_r/(7.5/60))
+    lat_r -= q*5/60; lon_r -= v*7.5/60
+    r = int(lat_r/(30/3600)); w = int(lon_r/(45/3600))
+    return f'{p:02d}{u:02d}{q}{v}{r}{w}'
+
+
+class ZoneTableTests(unittest.TestCase):
+    # 市役所・役場付近の点で、対応表から1つの系が引けること（告示の区分との照合）
+    POINTS = [
+        ('甲府市', 35.662, 138.568, 8), ('箱根町', 35.232, 139.106, 9), ('札幌市', 43.062, 141.354, 12),
+        ('函館市', 41.768, 140.729, 11), ('釧路市', 42.985, 144.381, 13), ('帯広市', 42.923, 143.196, 13),
+        ('旭川市', 43.771, 142.365, 12), ('小樽市', 43.190, 140.994, 11),
+        ('小笠原村父島', 27.094, 142.192, 14), ('南大東村', 25.829, 131.232, 17),
+        ('石垣市', 24.341, 124.156, 16), ('那覇市', 26.212, 127.681, 15),
+        ('奄美市名瀬', 28.377, 129.494, 1), ('鹿児島市', 31.596, 130.557, 2),
+        ('長崎市', 32.750, 129.877, 1), ('福岡市', 33.590, 130.402, 2), ('松江市', 35.468, 133.048, 3),
+        ('高知市', 33.559, 133.531, 4), ('神戸市', 34.690, 135.196, 5), ('京都市', 35.011, 135.768, 6),
+        ('名古屋市', 35.181, 136.906, 7), ('新宿区', 35.694, 139.703, 9), ('仙台市', 38.268, 140.872, 10),
+    ]
+
+    def test_known_points(self):
+        for name, lat, lon, zone in self.POINTS:
+            mesh = latlon_to_mesh8(lat, lon)
+            self.assertEqual(zi.zones_of_mesh(mesh), {zone}, f'{name} {mesh}')
+
+    def test_table_values_and_unknown(self):
+        table = zi.load_zone_table()
+        self.assertGreater(len(table), 30000)
+        for mesh, zones in table.items():
+            self.assertIn(len(mesh), (6, 8))
+            self.assertTrue(zones and zones <= set(range(0, 20)), mesh)
+        self.assertIsNone(zi.zones_of_mesh('00000000'))
+        self.assertIsNone(zi.zones_of_mesh('123'))
+
+    def test_second_mesh_lookup_and_border(self):
+        self.assertEqual(zi.zones_of_mesh('533844'), {8})
+        # 神奈川県（第IX系）と静岡県・山梨県（第VIII系）の境を含む2次メッシュは複数の系になる
+        mixed = [m for m, z in zi.load_zone_table().items() if len(m) == 8 and z == {8, 9}]
+        self.assertTrue(mixed)
+        self.assertGreaterEqual(len(zi.zones_of_mesh(mixed[0][:6])), 2)
+
+    def test_mesh_from_gsi_name(self):
+        self.assertEqual(zi.mesh_from_gsi_name('FG-GML-5338-44-00-DEM1A-20250822.xml'), '53384400')
+        self.assertEqual(zi.mesh_from_gsi_name('C:/x/FG-GML-533844-DEM1A-20251113.zip'), '533844')
+        self.assertEqual(zi.mesh_from_gsi_name('FG-GML-5338-44-DEM10B-20161001.xml'), '533844')
+        self.assertIsNone(zi.mesh_from_gsi_name('dem.xml'))
+
+
+def gsi_xml(mesh='53384400', srs='fguuid:jgd2011.bl'):
+    return (f'<?xml version="1.0" encoding="UTF-8"?><Dataset><DEM><mesh>{mesh}</mesh>'
+            f'<gml:Envelope srsName="{srs}"></gml:Envelope></DEM></Dataset>').encode()
+
+
+class GsiInferenceTests(unittest.TestCase):
+    def test_folder_and_zip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for i in range(3):
+                (Path(tmp)/f'FG-GML-5338-44-0{i}-DEM1A-20250822.xml').write_bytes(gsi_xml(f'5338440{i}'))
+            zone, datum, reason = zi.infer_gsi_zone([tmp], True)
+            self.assertEqual((zone, datum), (8, 'jgd2011'))
+            self.assertIn('第VIII系', reason)
+            z = Path(tmp)/'FG-GML-533844-DEM1A-20251113.zip'
+            import zipfile
+            with zipfile.ZipFile(z, 'w') as archive:
+                archive.writestr('FG-GML-5338-44-10-DEM1A-20251113.xml', gsi_xml('53384410', 'fguuid:jgd2024.bl'))
+            self.assertEqual(zi.infer_gsi_zone([str(z)], True)[:2], (8, 'jgd2011'))
+
+    def test_jgd2000_and_mixed_datum(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp)/'FG-GML-5338-44-00-DEM5A-2012.xml').write_bytes(gsi_xml(srs='fguuid:jgd2000.bl'))
+            self.assertEqual(zi.infer_gsi_zone([tmp], True)[:2], (8, 'jgd2000'))
+            (Path(tmp)/'FG-GML-5338-44-01-DEM5A-2020.xml').write_bytes(gsi_xml('53384401'))
+            zone, _, reason = zi.infer_gsi_zone([tmp], True)
+            self.assertIsNone(zone)
+            self.assertIn('混在', reason)
+
+    def test_multiple_zones_and_name_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kofu = latlon_to_mesh8(35.662, 138.568); tokyo = latlon_to_mesh8(35.694, 139.703)
+            (Path(tmp)/'a.xml').write_bytes(gsi_xml(kofu))
+            (Path(tmp)/'b.xml').write_bytes(gsi_xml(tokyo))
+            zone, _, reason = zi.infer_gsi_zone([tmp], True)
+            self.assertIsNone(zone)
+            self.assertIn('複数の系', reason)
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp)/'FG-GML-5339-01-00-DEM1A-2025.xml').write_bytes(gsi_xml('53384400'))
+            zone, _, reason = zi.infer_gsi_zone([tmp], True)
+            self.assertIsNone(zone)
+            self.assertIn('一致しません', reason)
+
+    def test_projected_input_crs_rejected_for_gsi(self):
+        class GeoSRS(FakeSRS):
+            def IsGeographic(self):
+                return self.value.startswith('GEO')
+        class Osr:
+            SpatialReference = GeoSRS
+        wkt, reason = zi.infer_target_crs('gsi', 'JPR8', [], True, Osr, fake_zone_of)
+        self.assertIsNone(wkt)
+        self.assertIn('空欄', reason)
