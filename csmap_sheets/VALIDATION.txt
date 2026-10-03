@@ -656,3 +656,24 @@ PSS版（FMEワークスペース）の`RasterSlopeCalculator`は`ALGORITHM="Hor
 - QGIS 3.44・Windows実機での動作（画面からの選択、ログ表示、出力への反映）。
 - 旧バージョンで保存した外部JSONプロファイルの実機での読込み。
 - FME出力・PSS版出力との画素比較。
+
+===============================================================================
+v0.10.1 — 版の表示、XYZ CLIの既定ズームの修正、文書の整合（2026-10-03）
+
+内容:
+- 版の表示：`engine/pipeline.py`に`version_banner()`を追加し、処理画面の説明欄の先頭と
+  実行ログの最初の行に「図郭対応CS立体図作成プラグイン（CS Map Sheets） v0.10.1」を表示する。
+- XYZ CLI：`build_cli_parser()`の既定値を`DEFAULTS`から取り、`--max-zoom`の既定を本体と同じ16にした。
+- 文書：README_jaのZIP名と座標系の手順の修正、検証データの出典、「実データ」の表記整理。
+- 計算処理（CS立体図・図郭・XYZタイル）の変更はない。
+
+検証（ユニットテスト）:
+- `VERSION`と`metadata.txt`の`version=`が一致すること、版表示に正式名称と版が含まれること。
+- CLIの既定値が`DEFAULTS`と一致し、明示指定が優先され、不正な`--format`が拒否されること。
+
+テスト結果（GDAL/PDAL/QGISなし、Python 3.12、numpy・scipy）:
+`python -m unittest discover -s csmap_sheets/tests -t .` → 124件実行、失敗0、スキップ13。
+
+まだ未確認・未実施:
+- QGIS 3.44・Windows実機での版表示（説明欄・ログ）の確認。
+- v0.10.0から引き続き、Windows実機での傾斜計算方式の選択・出力の確認。
