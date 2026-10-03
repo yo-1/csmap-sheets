@@ -34,6 +34,23 @@ class XYZTests(unittest.TestCase):
         # v0.9.4: 検証用データでの確認の結果、標準運用のXYZ最大ズームは16とする。
         self.assertEqual(DEFAULTS['xyz_max_zoom'], 16)
 
+    def test_cli_defaults_match_plugin_defaults(self):
+        # CLIの既定値がプラグイン本体（DEFAULTS）と一致すること（--max-zoomが18のまま残っていた不整合の回帰防止）。
+        from csmap_sheets.engine.xyz_tiles import build_cli_parser
+        a=build_cli_parser().parse_args(['--input','in.tif','--output','out'])
+        self.assertEqual(a.min_zoom,DEFAULTS['xyz_min_zoom'])
+        self.assertEqual(a.max_zoom,DEFAULTS['xyz_max_zoom'])
+        self.assertEqual(a.max_zoom,16)
+        self.assertEqual(a.max_tiles,DEFAULTS['xyz_max_tiles'])
+        self.assertEqual(a.format,DEFAULTS['xyz_format'])
+        self.assertEqual(a.webp_quality,DEFAULTS['xyz_webp_quality'])
+        self.assertFalse(a.webp_lossy)
+        # 明示指定は既定値より優先される
+        b=build_cli_parser().parse_args(['--input','i','--output','o','--max-zoom','18'])
+        self.assertEqual(b.max_zoom,18)
+        with self.assertRaises(SystemExit):
+            build_cli_parser().parse_args(['--input','i','--output','o','--format','jpg'])
+
     def test_precheck_xyz_tile_count_integration(self):
         try: from osgeo import gdal, osr
         except ImportError: self.skipTest('GDAL runtime unavailable')
