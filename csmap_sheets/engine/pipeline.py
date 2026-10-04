@@ -227,6 +227,21 @@ def read_config(path):
     return validate_config(json.loads(path.read_text(encoding="utf-8-sig")), path.parent)
 
 
+def mosaic_message(c, input_report):
+    """Log line for the mosaic stage.
+
+    For GSI DEMs the prepared inputs are groups of tiles sharing one pixel grid
+    (normalize_gsi_groups), not individual files, so say so: "Mosaic: 7 DEM files"
+    for 100 XML tiles was read as files being dropped (user report, 2026-10-03).
+    """
+    count = len(c['inputs'])
+    sources = len(input_report.get('sources', [])) if isinstance(input_report, dict) else 0
+    if c.get('input_type') == 'gsi' and sources:
+        return (f"Mosaic: {count} grid groups from {sources} GSI DEM tiles "
+                "(tiles sharing a pixel grid are merged into one group)")
+    return f"Mosaic: {count} DEM files"
+
+
 def validate_config(c, base_dir, feedback=None):
     base_dir = Path(base_dir)
     provided = set(c)
@@ -675,7 +690,7 @@ def run(c, feedback=None):
         manifest["stage"] = "mosaic"
         save()
         report(feedback, smoothing_summary(c), 0)
-        report(feedback, f"Mosaic: {len(c['inputs'])} DEM files", 0)
+        report(feedback, mosaic_message(c, input_report), 0)
         kwargs = dict(resolution="highest", VRTNodata=NODATA, strict=True)
         if c["source_nodata"] is not None:
             kwargs["srcNodata"] = c["source_nodata"]
