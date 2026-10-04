@@ -44,8 +44,8 @@ class QgisTests(unittest.TestCase):
         # XYZ_FORMAT defaults to PNG; WebP is opt-in (handover doc 2026-09-27, section 3).
         self.assertEqual(alg.parameterDefinition('XYZ_FORMAT').defaultValue(),0)
         self.assertEqual(len(alg.parameterDefinition('XYZ_FORMAT').options()),2)
-        # WebPは既定で可逆(lossless)。非可逆(lossy)はユーザー要望により選択制で追加(2026-09-28)。
-        self.assertEqual(alg.parameterDefinition('XYZ_WEBP_LOSSLESS').defaultValue(),True)
+        # WebPは既定で非可逆(lossy)（v0.12.0、ユーザー決定2026-10-04。v0.11.0までは可逆が既定）。
+        self.assertEqual(alg.parameterDefinition('XYZ_WEBP_LOSSLESS').defaultValue(),False)
         self.assertEqual(alg.parameterDefinition('XYZ_WEBP_QUALITY').defaultValue(),75)
         # PROFILE must keep the FME-manual and provisional ±0.03 curvature figures as separate,
         # clearly-labelled choices (2026-09-20/24 decisions), not merged into one default.

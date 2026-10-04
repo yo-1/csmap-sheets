@@ -86,8 +86,9 @@ class XYZTests(unittest.TestCase):
                       {'xyz_webp_quality':101},{'xyz_webp_quality':75.0}):
             with self.assertRaises(ValueError): validate_xyz({**DEFAULTS,**patch})
 
-    def test_webp_defaults_are_lossless_quality75(self):
-        self.assertTrue(DEFAULTS['xyz_webp_lossless'])
+    def test_webp_defaults_are_lossy_quality75(self):
+        # v0.12.0: WebPの既定は非可逆・QUALITY 75（ユーザー決定、2026-10-04）。形式の既定はPNGのまま。
+        self.assertFalse(DEFAULTS['xyz_webp_lossless'])
         self.assertEqual(DEFAULTS['xyz_webp_quality'], 75)
 
     def test_default_format_is_png(self):
