@@ -60,6 +60,12 @@ class QgisTests(unittest.TestCase):
         self.assertEqual(len(alg.parameterDefinition('SIGMA_UNIT').options()),2)
         self.assertEqual(alg.parameterDefinition('SIGMA').defaultValue(),3.)
         self.assertEqual(alg.parameterDefinition('SIGMA_PX').defaultValue(),3.)
+        # v0.12.0: すべての項目の表示名の先頭に【区分】が付き、σの3欄は続けて並ぶ
+        names=[d.name() for d in alg.parameterDefinitions()]
+        for definition in alg.parameterDefinitions():
+            self.assertTrue(definition.description().startswith('【'),definition.name())
+        self.assertEqual(names[names.index('SIGMA_UNIT'):names.index('SIGMA_UNIT')+4],
+                         ['SIGMA_UNIT','SIGMA','SIGMA_PX','SLOPE_ALGORITHM'])
 
 
 if __name__=='__main__':unittest.main(verbosity=2)
