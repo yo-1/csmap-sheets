@@ -6,6 +6,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import stat
 import time
 import zipfile
@@ -185,6 +186,100 @@ def validate_input(c):
         raise ValueError('forest_nodata must be null or a finite number')
 
 
+# 入力形式の選び間違いの案内（ユーザー要望、2026-10-04）。選んだ形式の入力が既存の探索で
+# 1件も見つからないと確定したときだけ、フォルダー内の別形式のファイルを数えて案内に添える。
+# 設定は自動で切り替えない（利用者が選び直す）。拡張子だけでは形式を断定しない（.xml・.zipは
+# 「国土地理院DEMの候補」とし、先頭の数件だけ内容を確かめる）。
+INPUT_TYPE_NAMES = {'raster': '標高ラスタ（GeoTIFF・IMG・ASC）', 'gsi': '国土地理院DEM（ZIP・XML）',
+                    'text': '標高テキスト（XYZ・CSV・TXT）', 'lidar': 'レーザ点群（LAS・LAZ）',
+                    'forest': '森林航空レーザ成果（LEM・CSV格子・TIFF・GeoTIFF・ZIP）'}
+# 拡張子の区分：(表示名, 選び直す候補の入力形式)。1つの拡張子が複数の形式で使われるものは候補を併記する。
+GUIDANCE_GROUPS = (
+    ('gsi', ('.xml', '.zip'), '国土地理院DEMの候補', ('gsi', 'forest')),
+    ('raster', ('.tif', '.tiff', '.img', '.asc', '.vrt'), '標高ラスタの候補', ('raster', 'forest')),
+    ('text', ('.xyz', '.csv', '.txt'), '標高テキストの候補', ('text', 'forest')),
+    ('lidar', ('.las', '.laz'), 'レーザ点群', ('lidar',)),
+    ('forest', ('.lem',), '森林航空レーザ成果（LEM）', ('forest',)),
+)
+GUIDANCE_SCAN_LIMIT = 2000
+GUIDANCE_CONTENT_CHECK_LIMIT = 20
+
+
+def _sniff_gsi_candidate(path):
+    """.xml・.zipの中身を少しだけ見て、'gsi'（国土地理院DEM）、'forest'（森林航空レーザ成果の
+    可能性があるZIP）、None（どちらとも言えない・読めない）を返す。"""
+    try:
+        if path.suffix.lower() == '.zip':
+            with zipfile.ZipFile(path) as archive:
+                names = [Path(n).name for n in archive.namelist()[:2000]]
+            if any(re.search(r'FG-GML-.*-DEM', n, re.I) for n in names):
+                return 'gsi'
+            # .txtは説明書きなどにも使われるため、それだけでは森林航空レーザ成果とみなさない
+            if any(Path(n).suffix.lower() in {'.lem', '.csv', '.xyz', '.tif', '.tiff'} for n in names):
+                return 'forest'
+            return None
+        with open(path, 'rb') as f:
+            head = f.read(8192)
+        return 'gsi' if b'fgd.gsi.go.jp' in head and b'DEM' in head else None
+    except (OSError, zipfile.BadZipFile, ValueError):
+        return None
+
+
+def input_type_guidance(entry, c):
+    """選んだ入力形式のファイルが無いと確定した入力（フォルダーまたはファイル）について、
+    見つかった別形式のファイルと、選び直す入力形式を案内する日本語の文を返す。"""
+    selected = c['input_type']
+    path = Path(entry)
+    counts = {key: 0 for key, *_ in GUIDANCE_GROUPS}
+    gsi_checked = gsi_confirmed = gsi_forest_zip = 0
+    scanned = 0
+    truncated = False
+    if path.is_dir():
+        walker = os.walk(str(path)) if c.get('recursive', True) else [next(os.walk(str(path)), (str(path), [], []))]
+        candidates = (Path(root) / name for root, _dirs, names in walker for name in sorted(names))
+    else:
+        candidates = iter([path])
+    for candidate in candidates:
+        if scanned >= GUIDANCE_SCAN_LIMIT:
+            truncated = True
+            break
+        scanned += 1
+        suffix = candidate.suffix.lower()
+        for key, suffixes, _label, _types in GUIDANCE_GROUPS:
+            if suffix in suffixes:
+                counts[key] += 1
+                if key == 'gsi' and gsi_checked < GUIDANCE_CONTENT_CHECK_LIMIT:
+                    gsi_checked += 1
+                    kind = _sniff_gsi_candidate(candidate)
+                    gsi_confirmed += kind == 'gsi'
+                    gsi_forest_zip += kind == 'forest'
+                break
+    lines = [f"入力形式「{INPUT_TYPE_NAMES[selected]}」で使えるファイル（{'・'.join(sorted(EXTENSIONS[selected]))}）が、"
+             f"指定した入力にありません。"]
+    found = [(key, label, types) for key, _s, label, types in GUIDANCE_GROUPS if counts[key] and key != selected]
+    scope = f'確認した範囲（先頭{GUIDANCE_SCAN_LIMIT:,}件）' if truncated else '指定した入力'
+    if not found:
+        lines.append(f'{scope}では、ほかの入力形式のファイルも見つかりません。入力フォルダー・ファイルを確認してください。')
+        return '\n'.join(lines)
+    lines.append(f'{scope}で見つかった、ほかの入力形式のファイル：')
+    suggestions = []
+    for key, label, types in found:
+        note = ''
+        if key == 'gsi':
+            note = f'（内容を確かめた{gsi_checked}件のうち、国土地理院DEMは{gsi_confirmed}件'
+            note += f'、森林航空レーザ成果の可能性があるZIPは{gsi_forest_zip}件）' if gsi_forest_zip else '）'
+            # 内容で確かめられた形式だけを勧める（無関係なXML・ZIPなら勧めない）
+            types = tuple(t for t, n in (('gsi', gsi_confirmed), ('forest', gsi_forest_zip)) if n)
+        lines.append(f'- {label}：{counts[key]:,}件{note}')
+        suggestions.extend(t for t in types if t != selected and t not in suggestions)
+    if suggestions:
+        lines.append('入力形式を次のいずれかに選び直してください（設定は自動では切り替えません）：'
+                     + '、'.join(f'「{INPUT_TYPE_NAMES[t]}」' for t in suggestions))
+    else:
+        lines.append('入力形式と入力フォルダー・ファイルを確認してください。')
+    return '\n'.join(lines)
+
+
 def discover(inputs, base_dir, c, feedback=None):
     if not isinstance(inputs,list) or not inputs: raise ValueError('Specify input files or folders')
     files=[]; seen=set(); extensions=EXTENSIONS[c['input_type']]
@@ -219,14 +314,16 @@ def discover(inputs, base_dir, c, feedback=None):
                         if f.suffix.lower() in COMPANION_ONLY_EXTENSIONS:
                             companion_only+=1
                             continue
-                        raise ValueError('Input extension does not match input_type: '+str(f))
+                        raise ValueError('Input extension does not match input_type: '+str(f)
+                                         +'\n'+input_type_guidance(f,c))
                     continue
                 found+=1
                 path=_absolute_path(f)
                 identity=os.path.normcase(path)
                 if identity not in seen:files.append(path);seen.add(identity)
                 if len(files)>c['max_input_files']:raise ValueError('Too many input files')
-        if not found and not companion_only:raise ValueError('No supported files in: '+str(entry))
+        if not found and not companion_only:
+            raise ValueError('No supported files in: '+str(entry)+'\n'+input_type_guidance(p if mode is not None else entry,c))
     if not files:
         # 個々のentryは「同梱物のみ」で有効化(companion_only>0)されたため上の
         # per-entryチェックは通過したが、全entryを合算した結果、有効な入力が
