@@ -116,9 +116,10 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             '\n設定プロファイルは処理設定をJSONで保存・読込みできます。入力・出力・CRS・確認欄は安全のため保存対象外です。'
             '\n図郭レベルはファイル寸法・番号の選択で、DEM精度の保証ではありません。'
             'FME方式でも地形量計算は本プラグイン方式のため、FME出力との画素完全一致を保証しません。'
-            '\nXYZ画像形式はPNG（既定）またはWebPを選択します。WebPは既定で可逆(lossless)ですが、'
-            '「WebPを可逆(lossless)にする」を無効にすると非可逆(lossy)になり、QUALITY（1-100、既定75、'
-            'GDAL WEBPドライバの既定値と同じ）で圧縮率を調整できます。QGIS同梱GDALにWEBP'
+            '\nXYZ画像形式はPNG（既定）またはWebPを選択します。WebPは既定で非可逆(lossy)で、'
+            'QUALITY（1-100、既定75、'
+            'GDAL WEBPドライバの既定値と同じ）で圧縮率を調整できます。「WebPを可逆(lossless)にする」を'
+            '有効にすると可逆になります（v0.11.0までの既定）。QGIS同梱GDALにWEBP'
             'ドライバが無い環境では、可逆・非可逆いずれの設定でもPNGへ自動的に切り替えず、エラーで停止します。'
             'MBTiles・GeoPackageへの格納は未対応です（フォルダーXYZのみ）。'
             '\nCopyright (C) 2026 Yoichi Wada. GNU GPL v3.0 only.'
@@ -265,7 +266,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(QgsProcessingParameterEnum('XYZ_FORMAT','XYZ画像形式',
             ['PNG','WebP（要GDAL WEBPドライバ）'],defaultValue=0))
         webp_lossless=QgsProcessingParameterBoolean('XYZ_WEBP_LOSSLESS',
-            'WebPを可逆(lossless)にする（無効の場合は下のQUALITYを使う非可逆(lossy)）',True)
+            'WebPを可逆(lossless)にする（既定は無効＝下のQUALITYを使う非可逆(lossy)）',False)
         webp_lossless.setFlags(webp_lossless.flags() | Qgis.ProcessingParameterFlag.Advanced)
         self.addParameter(webp_lossless)
         webp_quality=QgsProcessingParameterNumber('XYZ_WEBP_QUALITY',
