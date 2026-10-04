@@ -57,7 +57,9 @@ class XYZTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); src = root/'projected_dem.vrt'
             ds = gdal.GetDriverByName('GTiff').Create(str(root/'dem.tif'), 256, 256, 1, gdal.GDT_Float32)
-            h = HALF_WORLD; ds.SetGeoTransform((-h, h/256, 0, h, 0, -h/256))
+            # 世界全体（-h..h、幅2h）を256画素で覆う。以前は画素幅をh/256としていたため
+            # 北西の4分の1しか覆っておらず、期待値（全球の候補数）と食い違っていた。
+            h = HALF_WORLD; ds.SetGeoTransform((-h, 2*h/256, 0, h, 0, -2*h/256))
             crs = osr.SpatialReference(); crs.ImportFromEPSG(3857); ds.SetProjection(crs.ExportToWkt())
             ds.GetRasterBand(1).Fill(100.0)
             ds = None
