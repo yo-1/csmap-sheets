@@ -55,6 +55,11 @@ class QgisTests(unittest.TestCase):
         # FME_STRETCH's default selection should reproduce the manual's own documented output
         # (色の鮮明化) out of the box, not silently skip it.
         self.assertEqual(alg.parameterDefinition('FME_STRETCH').defaultValue(),1)
+        # v0.12.0: σの指定方式。既定は地上距離（m）3m、画素数の初期値は3px。
+        self.assertEqual(alg.parameterDefinition('SIGMA_UNIT').defaultValue(),0)
+        self.assertEqual(len(alg.parameterDefinition('SIGMA_UNIT').options()),2)
+        self.assertEqual(alg.parameterDefinition('SIGMA').defaultValue(),3.)
+        self.assertEqual(alg.parameterDefinition('SIGMA_PX').defaultValue(),3.)
 
 
 if __name__=='__main__':unittest.main(verbosity=2)
