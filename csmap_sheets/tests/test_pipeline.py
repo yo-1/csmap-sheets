@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import numpy as np
-from csmap_sheets.engine.pipeline import (relief, run, read_config, validate_config,
+from csmap_sheets.engine.pipeline import (relief, run, read_config, validate_config, mosaic_message,
     _jpr_zone_of, infer_target_crs_from_raster, JPR_ZONE_ORIGINS)
 
 
@@ -315,6 +315,22 @@ class VersionDisplayTests(unittest.TestCase):
         meta=Path(__file__).resolve().parents[1]/'metadata.txt'
         lines=[l for l in meta.read_text(encoding='utf-8').splitlines() if l.startswith('version=')]
         self.assertEqual(lines,['version='+VERSION])
+
+
+
+class MosaicMessageTests(unittest.TestCase):
+    def test_gsi_reports_groups_and_tiles(self):
+        c = {'input_type': 'gsi', 'inputs': ['a.tif'] * 7}
+        self.assertEqual(mosaic_message(c, {'sources': [{}] * 100}),
+                         'Mosaic: 7 grid groups from 100 GSI DEM tiles '
+                         '(tiles sharing a pixel grid are merged into one group)')
+
+    def test_other_inputs_keep_previous_wording(self):
+        self.assertEqual(mosaic_message({'input_type': 'raster', 'inputs': ['a', 'b']},
+                                        {'sources': [{}, {}]}), 'Mosaic: 2 DEM files')
+        self.assertEqual(mosaic_message({'input_type': 'gsi', 'inputs': ['a']}, {}),
+                         'Mosaic: 1 DEM files')
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
