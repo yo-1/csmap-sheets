@@ -1,7 +1,9 @@
 name: tests
 
-# 第1段階: GDAL / PDAL / QGIS なしで実行できるテストだけを回す。
-# GDAL・QGIS を必要とするテストは各テスト側で自動的にスキップされる
+# 第1段階（unit）: GDAL / PDAL / QGIS なしで実行できるテストだけを回す。
+# 第2段階（gdal）: Ubuntu 24.04 のパッケージの GDAL（3.8系）と NumPy・SciPy で、
+# GDAL を使うテスト（結合テスト・XYZ・入力変換）も回す。
+# どちらでも、QGIS・PDAL を必要とするテストは自動的にスキップされる
 # （スキップ分は未実行であり、合格を意味しない）。
 on:
   push:
@@ -30,3 +32,17 @@ jobs:
         run: python -m compileall -q csmap_sheets
       - name: Unit tests
         run: python -m unittest discover -s csmap_sheets/tests -t . -v
+
+  gdal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GDAL, NumPy and SciPy (Ubuntu packages)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-gdal python3-numpy python3-scipy
+      - name: Show versions
+        run: /usr/bin/python3 -c "from osgeo import gdal; import numpy, scipy; print('GDAL', gdal.VersionInfo('RELEASE_NAME'), 'numpy', numpy.__version__, 'scipy', scipy.__version__, 'WEBP', gdal.GetDriverByName('WEBP') is not None)"
+      - name: Unit and GDAL integration tests
+        run: /usr/bin/python3 -m unittest discover -s csmap_sheets/tests -t . -v
