@@ -13,7 +13,7 @@ import sys
 import traceback
 
 import numpy as np
-from .filters import gaussian_filter, minimum_filter, BACKEND
+from .filters import gaussian_filter, gaussian_center_fill, minimum_filter, BACKEND
 from .map_sheets import dimensions, cut_sheets, intersecting_sheets
 from .progress import report, check_cancel, gdal_progress, CancelledError
 from .color_fme import render_fme, rendering_record as fme_rendering_record, validate_fme_settings
@@ -62,6 +62,11 @@ def color_settings(settings=None):
 
 SLOPE_ALGORITHMS = ('horn', 'central_difference')
 SLOPE_ALGORITHM_NAMES = {'horn': 'Horn法', 'central_difference': '中央差分法'}
+NODATA_EDGE_MODES = ('safe_mask', 'pss_approximation')
+NODATA_EDGE_MODE_NAMES = {
+    'safe_mask': '標準（欠測の影響範囲を透過）',
+    'pss_approximation': 'PSS互換を目指す（計算用補完）',
+}
 
 
 def missing_slope_algorithm_notice(saved, chosen):
@@ -75,7 +80,18 @@ def missing_slope_algorithm_notice(saved, chosen):
             '再現する場合は「傾斜計算のアルゴリズム」で中央差分法を選んでください。')
 
 
-def slope_gradients(raw, cell, slope_algorithm='horn'):
+def _neighbour_with_centre(raw, valid, dy, dx):
+    """Return a shifted neighbour, extending edges and replacing NoData by centre."""
+    h, w = raw.shape
+    padded_raw = np.pad(raw, 1, mode='edge')
+    padded_valid = np.pad(valid, 1, mode='edge')
+    neighbour = padded_raw[1 + dy:1 + dy + h, 1 + dx:1 + dx + w]
+    neighbour_valid = padded_valid[1 + dy:1 + dy + h, 1 + dx:1 + dx + w]
+    return np.where(neighbour_valid, neighbour, raw)
+
+
+def slope_gradients(raw, cell, slope_algorithm='horn', valid=None,
+                    nodata_edge_mode='safe_mask'):
     """Return (dz/dx, dz/dy) in the same units as raw/cell for the selected method.
 
     Both methods need only a 1-cell halo (callers already supply
@@ -94,6 +110,27 @@ def slope_gradients(raw, cell, slope_algorithm='horn'):
     """
     if slope_algorithm not in SLOPE_ALGORITHMS:
         raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
+    if nodata_edge_mode not in NODATA_EDGE_MODES:
+        raise ValueError(f"nodata_edge_mode must be one of {NODATA_EDGE_MODES}")
+    if nodata_edge_mode == 'pss_approximation':
+        if valid is None:
+            raise ValueError('valid is required for pss_approximation')
+        valid = np.asarray(valid, dtype=bool)
+        if valid.shape != raw.shape:
+            raise ValueError('raw and valid must have the same shape')
+        n = _neighbour_with_centre(raw, valid, -1, 0)
+        s = _neighbour_with_centre(raw, valid, 1, 0)
+        w = _neighbour_with_centre(raw, valid, 0, -1)
+        e = _neighbour_with_centre(raw, valid, 0, 1)
+        if slope_algorithm == 'central_difference':
+            return (e - w) / (2 * cell), (s - n) / (2 * cell)
+        nw = _neighbour_with_centre(raw, valid, -1, -1)
+        ne = _neighbour_with_centre(raw, valid, -1, 1)
+        sw = _neighbour_with_centre(raw, valid, 1, -1)
+        se = _neighbour_with_centre(raw, valid, 1, 1)
+        dx = ((ne + 2 * e + se) - (nw + 2 * w + sw)) / (8 * cell)
+        dy = ((sw + 2 * s + se) - (nw + 2 * n + ne)) / (8 * cell)
+        return dx, dy
     if slope_algorithm == 'central_difference':
         dx = (np.roll(raw, -1, 1) - np.roll(raw, 1, 1)) / (2 * cell)
         dy = (np.roll(raw, -1, 0) - np.roll(raw, 1, 0)) / (2 * cell)
@@ -155,12 +192,16 @@ def smoothing_summary(c):
 
 
 def relief(z, valid, cell, sigma_m, curvature_limit, slope_max, elev_range, color=None,
-           render_mode='independent_v040', fme=None, slope_algorithm='horn', sigma_px=None):
+           render_mode='independent_v040', fme=None, slope_algorithm='horn', sigma_px=None,
+           nodata_edge_mode='safe_mask'):
     """Return RGBA, slope degrees and negative-Laplacian proxy (1/m).
 
-    All samples touching a missing value within the full processing support
-    are transparent. Callers must supply ceil(4*sigma_m/cell)+1 halo cells
-    (>=1 cell, which both supported slope_algorithm values need).
+    In the default ``safe_mask`` mode, all samples touching a missing value
+    within the full processing support are transparent. ``pss_approximation``
+    uses calculation-only centre substitution and nearest-edge extension while
+    keeping missing centre cells transparent. Callers must supply
+    ceil(4*sigma_m/cell)+1 halo cells (>=1 cell, which both supported
+    slope_algorithm values need).
     ``sigma_px`` (v0.12.0) gives sigma directly in grid pixels and then takes
     precedence over ``sigma_m``; the halo is ceil(4*sigma_px)+1 in that case.
     """
@@ -169,6 +210,8 @@ def relief(z, valid, cell, sigma_m, curvature_limit, slope_max, elev_range, colo
         raise ValueError("render_mode must be independent_v040 or fme_manual")
     if slope_algorithm not in SLOPE_ALGORITHMS:
         raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
+    if nodata_edge_mode not in NODATA_EDGE_MODES:
+        raise ValueError(f"nodata_edge_mode must be one of {NODATA_EDGE_MODES}")
     tone = color_settings(color) if render_mode == 'independent_v040' else None
     if sigma_px is None:
         radius = math.ceil(4 * sigma_m / cell)
@@ -179,16 +222,27 @@ def relief(z, valid, cell, sigma_m, curvature_limit, slope_max, elev_range, colo
     halo = radius + 1
     valid = valid & np.isfinite(z)
     raw = np.where(valid, z, 0).astype(np.float64)
-    smooth = (gaussian_filter(raw, sigma=sigma_grid, radius=radius,
-                              mode="constant", cval=0)
-              if sigma_grid > 0 else raw.copy())
-    dx, dy = slope_gradients(raw, cell, slope_algorithm)
+    if nodata_edge_mode == 'pss_approximation':
+        smooth = gaussian_center_fill(raw, valid, sigma_grid, radius)
+    else:
+        smooth = (gaussian_filter(raw, sigma=sigma_grid, radius=radius,
+                                  mode="constant", cval=0)
+                  if sigma_grid > 0 else raw.copy())
+    dx, dy = slope_gradients(raw, cell, slope_algorithm, valid, nodata_edge_mode)
     slope = np.degrees(np.arctan(np.hypot(dx, dy)))
-    curvature = -(np.roll(smooth, -1, 1) + np.roll(smooth, 1, 1)
-                  + np.roll(smooth, -1, 0) + np.roll(smooth, 1, 0)
-                  - 4 * smooth) / cell**2
-    safe = minimum_filter(valid.astype(np.uint8), size=2 * halo + 1,
-                          mode="constant", cval=0).astype(bool)
+    if nodata_edge_mode == 'pss_approximation':
+        east = _neighbour_with_centre(smooth, valid, 0, 1)
+        west = _neighbour_with_centre(smooth, valid, 0, -1)
+        north = _neighbour_with_centre(smooth, valid, -1, 0)
+        south = _neighbour_with_centre(smooth, valid, 1, 0)
+        curvature = -(east + west + north + south - 4 * smooth) / cell**2
+        safe = valid
+    else:
+        curvature = -(np.roll(smooth, -1, 1) + np.roll(smooth, 1, 1)
+                      + np.roll(smooth, -1, 0) + np.roll(smooth, 1, 0)
+                      - 4 * smooth) / cell**2
+        safe = minimum_filter(valid.astype(np.uint8), size=2 * halo + 1,
+                              mode="constant", cval=0).astype(bool)
     if render_mode == 'fme_manual':
         rgb = render_fme(raw, slope, curvature, elev_range, [0.0, slope_max],
                          [-curvature_limit, curvature_limit], fme)
@@ -267,6 +321,7 @@ def validate_config(c, base_dir, feedback=None):
                     # 式。1セルノイズに対して中央差分法より頑健）。中央差分法は
                     # v0.9.4以前の挙動（2点差分）との比較・互換のために選択可能とする。
                     slope_algorithm='horn',
+                    nodata_edge_mode='safe_mask',
                     # v0.12.0: Gaussian σの指定方式（ユーザー承認の改訂依頼、2026-10-03）。
                     # 'm'＝地上距離（sigma_mを使う。従来どおり・既定）、'px'＝計算格子の
                     # 画素数（sigma_pxを使う）。方式ごとの値を別々に保持し、方式を切り替えても
@@ -328,6 +383,8 @@ def validate_config(c, base_dir, feedback=None):
         raise ValueError("slope_max must be <= 90 degrees")
     if c["slope_algorithm"] not in SLOPE_ALGORITHMS:
         raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
+    if c["nodata_edge_mode"] not in NODATA_EDGE_MODES:
+        raise ValueError(f"nodata_edge_mode must be one of {NODATA_EDGE_MODES}")
     if c.get("elevation_range_auto"):
         margin = c.get("elevation_range_margin", 50.0)
         if not math.isfinite(margin) or margin < 0:
@@ -508,7 +565,8 @@ def make_relief(dem_path, output_path, c, gdal, feedback=None):
                 c["curvature_limit"], c["slope_max"], c["elevation_range"], c.get('color'),
                 c.get('render_mode', 'independent_v040'), c.get('fme'),
                 c.get('slope_algorithm', 'horn'),
-                sigma_px if c.get('sigma_unit', 'm') == 'px' else None)
+                sigma_px if c.get('sigma_unit', 'm') == 'px' else None,
+                c.get('nodata_edge_mode', 'safe_mask'))
             tile = rgba[y-y0:y-y0+bh, x-x0:x-x0+bw]
             valid_count += int(np.count_nonzero(tile[:, :, 3]))
             for b in range(4):
@@ -626,6 +684,12 @@ def rendering_settings(c):
             "central_difference": "2-point central differences of unsmoothed elevation (degrees)",
         }[slope_algorithm],
         "slope_algorithm": slope_algorithm,
+        "nodata_edge_mode": c.get("nodata_edge_mode", "safe_mask"),
+        "nodata_edge_handling": {
+            "safe_mask": "transparent where the full processing support touches NoData or exterior",
+            "pss_approximation": ("calculation-only nearest-edge extension and centre-value substitution "
+                                  "for missing neighbours; missing centre remains transparent"),
+        }[c.get("nodata_edge_mode", "safe_mask")],
         # v0.12.0: smoothing_sigma_m is the sigma in metres actually used (equal to the
         # setting in 'm' mode, as before); "smoothing" keeps the setting and the
         # effective values separately so a px setting is never recorded as metres.

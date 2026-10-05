@@ -146,6 +146,14 @@ class FMEColorTests(unittest.TestCase):
             self.assertEqual(record['terrain_calculation']['slope_algorithm'],algorithm)
             self.assertIn(expected_fragment,record['terrain_calculation']['slope'])
 
+    def test_pipeline_manifest_record_reflects_nodata_edge_mode(self):
+        record=rendering_settings(dict(render_mode='independent_v040',elevation_range=[0,3000],
+            slope_max=60,curvature_limit=.05,sigma_m=3,color={},
+            nodata_edge_mode='pss_approximation'))
+        terrain=record['terrain_calculation']
+        self.assertEqual(terrain['nodata_edge_mode'],'pss_approximation')
+        self.assertIn('centre-value substitution',terrain['nodata_edge_handling'])
+
 
 class SlopeAlgorithmTests(unittest.TestCase):
     """v0.10.0: 傾斜計算アルゴリズムの選択（ユーザー決定、2026-10-02）。既定値はHorn法。

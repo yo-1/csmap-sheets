@@ -66,7 +66,7 @@ PARAMETER_SECTIONS = {
                'TEXT_AXES','TEXT_CELL'),
     '森林レーザ': ('FOREST_AXES','FOREST_CELL','LEM_SCALE','FOREST_NODATA'),
     '出力・図郭': ('CRS','LEVEL','CELL'),
-    '地形計算': ('SIGMA_UNIT','SIGMA','SIGMA_PX','SLOPE_ALGORITHM'),
+    '地形計算': ('SIGMA_UNIT','SIGMA','SIGMA_PX','SLOPE_ALGORITHM','NODATA_EDGE_MODE'),
     '配色': ('RENDER_MODE','LEGACY_PRESET','FME_STRETCH','CURVE_LIMIT','SLOPE_MAX',
             'ELEV_MIN','ELEV_MAX','ELEV_AUTO','ELEV_MARGIN'),
     'XYZ': ('XYZ','XYZ_FORMAT','XYZ_WEBP_LOSSLESS','XYZ_WEBP_QUALITY','XYZ_MIN','XYZ_MAX','XYZ_LIMIT'),
@@ -112,6 +112,8 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             '\n曲率用平滑化の標準偏差（σ）は「地上距離（m）」（既定3m）と「計算格子の画素数（px）」から指定方式を選べます。'
             '計算格子は出力セルサイズで再投影したDEMの格子です。σ=3pxは、0.5m格子で1.5m、1m格子で3m、2m格子で6mに相当します。'
             '方式ごとに値を保持し、選んだ方式の値だけを使います。組込みのFME設定プロファイルはm方式3mを使います。'
+            '\n欠測・端部の処理は、従来どおり影響範囲を透過する標準方式（既定）と、計算時だけ端値延長・'
+            '中心値代用を行うPSS互換を目指す方式から選べます。後者も欠測中心は透明で、完全一致を保証するものではありません。'
             '\n県全域は図郭単位で処理し、全域をメモリーへ展開しません。系番号は選択した平面直角座標系から自動決定します。'
             '\n設定プロファイルは処理設定をJSONで保存・読込みできます。入力・出力・CRS・確認欄は安全のため保存対象外です。'
             '\n図郭レベルはファイル寸法・番号の選択で、DEM精度の保証ではありません。'
@@ -223,6 +225,9 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             ['Horn法（推奨・既定。3×3加重差分）',
              '中央差分法（従来互換。v0.9.4以前の既定）'],defaultValue=0)
         self.addParameter(slope_algorithm)
+        self.addParameter(QgsProcessingParameterEnum('NODATA_EDGE_MODE','欠測・端部の処理方式',
+            ['標準（欠測の影響範囲を透過。既定・従来互換）',
+             'PSS互換を目指す（計算用補完。端値延長・近傍欠測を中心値で代用）'],defaultValue=0))
         self.addParameter(QgsProcessingParameterEnum('RENDER_MODE','描画方式',
             ['独自方式 v0.4互換','FMEマニュアル方式'],defaultValue=0))
         self.addParameter(QgsProcessingParameterEnum('LEGACY_PRESET','独自方式の色設定',
@@ -513,6 +518,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             curvature_limit=self.parameterAsDouble(parameters,'CURVE_LIMIT',context),
             slope_max=self.parameterAsDouble(parameters,'SLOPE_MAX',context),
             slope_algorithm=['horn','central_difference'][self.parameterAsEnum(parameters,'SLOPE_ALGORITHM',context)],
+            nodata_edge_mode=['safe_mask','pss_approximation'][self.parameterAsEnum(parameters,'NODATA_EDGE_MODE',context)],
             elevation_range=[self.parameterAsDouble(parameters,'ELEV_MIN',context),
                              self.parameterAsDouble(parameters,'ELEV_MAX',context)],
             elevation_range_auto=self.parameterAsBool(parameters,'ELEV_AUTO',context),
@@ -579,13 +585,15 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         except (ValueError,TypeError,OSError) as exc:raise QgsProcessingException(str(exc)) from exc
         from .engine.pipeline import SLOPE_ALGORITHM_NAMES
         feedback.pushInfo('傾斜計算方式: '+SLOPE_ALGORITHM_NAMES[self.settings['slope_algorithm']])
+        from .engine.pipeline import NODATA_EDGE_MODE_NAMES
+        feedback.pushInfo('欠測・端部の処理方式: '+NODATA_EDGE_MODE_NAMES[self.settings['nodata_edge_mode']])
         from .engine.pipeline import smoothing_summary
         feedback.pushInfo(smoothing_summary(self.settings))
         save_value=parameters.get('SAVE_PROFILE')
         if not QgsVariantUtils.isNull(save_value) and str(save_value).strip():
             save_path=Path(self.parameterAsFileOutput(parameters,'SAVE_PROFILE',context))
             excluded={'inputs','output_dir','target_crs','plane_zone','input_type','confirm_elevation_metres'}
-            payload={'schema':'csmap-settings-profile-v4','settings':{k:v for k,v in self.settings.items() if k not in excluded}}
+            payload={'schema':'csmap-settings-profile-v5','settings':{k:v for k,v in self.settings.items() if k not in excluded}}
             try:save_path.write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
             except OSError as exc:raise QgsProcessingException('設定プロファイルを保存できません: '+str(exc)) from exc
             feedback.pushInfo('設定プロファイルを保存しました: '+str(save_path))

@@ -2,7 +2,7 @@ import unittest
 import tempfile
 from pathlib import Path
 import numpy as np
-from csmap_sheets.engine.filters import numpy_gaussian, numpy_valid_minimum
+from csmap_sheets.engine.filters import gaussian_center_fill, numpy_gaussian, numpy_valid_minimum
 from csmap_sheets.engine import pipeline
 from csmap_sheets.engine.progress import check_cancel, gdal_progress, CancelledError
 
@@ -16,6 +16,23 @@ class PluginEngineTests(unittest.TestCase):
             radius=int(np.ceil(4*sigma))
             np.testing.assert_allclose(numpy_gaussian(a,sigma,radius),
                 gaussian_filter(a,sigma,radius=radius,mode='constant',cval=0),atol=1e-14)
+
+    def test_numpy_gaussian_nearest_against_scipy(self):
+        try:from scipy.ndimage import gaussian_filter
+        except ImportError:self.skipTest('SciPy reference is unavailable')
+        a=np.random.default_rng(7).normal(size=(23,19))
+        for sigma in (.6,2.):
+            radius=int(np.ceil(4*sigma))
+            np.testing.assert_allclose(numpy_gaussian(a,sigma,radius,mode='nearest'),
+                gaussian_filter(a,sigma,radius=radius,mode='nearest'),atol=1e-14)
+
+    def test_gaussian_center_fill_preserves_constant_valid_cells(self):
+        a=np.full((21,23),100.)
+        valid=np.ones(a.shape,dtype=bool);valid[10,11]=False
+        a[~valid]=0
+        actual=gaussian_center_fill(a,valid,2.,8)
+        np.testing.assert_allclose(actual[valid],100.,atol=1e-12)
+        self.assertEqual(actual[10,11],0.)
 
     def test_numpy_mask_against_scipy(self):
         try:from scipy.ndimage import minimum_filter
