@@ -69,6 +69,17 @@ NODATA_EDGE_MODE_NAMES = {
 }
 
 
+def profile_nodata_edge_mode(saved, chosen):
+    """Resolve external-profile mode independently of QGIS; validate later."""
+    if 'nodata_edge_mode' in saved:
+        return saved['nodata_edge_mode'], None
+    warning = None
+    if chosen != 'safe_mask':
+        warning = ('この設定プロファイルには欠測・端部の処理方式（nodata_edge_mode）がないため、'
+                   '標準（safe_mask）として読みます。画面のPSS近似の選択は適用しません。')
+    return 'safe_mask', warning
+
+
 def missing_slope_algorithm_notice(saved, chosen):
     """Warning text when a loaded profile predates slope_algorithm (v0.9.4 and
     earlier), else None. Those profiles were produced with central differences,
@@ -725,7 +736,7 @@ def detect_elevation_range(raster_ds, margin, feedback=None):
     return [lo, hi], [dmin, dmax]
 
 
-def run(c, feedback=None):
+def run(c, feedback=None, profile_warnings=()):
     from osgeo import gdal, osr, ogr
     check_cancel(feedback)
     # API floor; no gdal2tiles dependency in the map-sheet workflow.
@@ -742,6 +753,9 @@ def run(c, feedback=None):
         rendering=rendering, settings=c,
         sources=records, python=sys.version, numpy=np.__version__, filter_backend=BACKEND,
         gdal=gdal.VersionInfo("RELEASE_NAME"), overlap_priority="later valid input wins")
+    if profile_warnings:
+        manifest["profile_warnings"] = list(profile_warnings)
+
     def save():
         (out/"run.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     save()

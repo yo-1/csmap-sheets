@@ -113,7 +113,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             '計算格子は出力セルサイズで再投影したDEMの格子です。σ=3pxは、0.5m格子で1.5m、1m格子で3m、2m格子で6mに相当します。'
             '方式ごとに値を保持し、選んだ方式の値だけを使います。組込みのFME設定プロファイルはm方式3mを使います。'
             '\n欠測・端部の処理は、従来どおり影響範囲を透過する標準方式（既定）と、計算時だけ端値延長・'
-            '中心値代用を行うPSS互換を目指す方式から選べます。後者も欠測中心は透明で、完全一致を保証するものではありません。'
+            '中心値代用を行うPSS配布FMEワークスペース（以下PSS）の互換を目指す方式から選べます。後者も欠測中心は透明で、完全一致を保証するものではありません。欠測縁の傾斜は小さく出ます。補完値を標高として扱わないでください。'
             '\n県全域は図郭単位で処理し、全域をメモリーへ展開しません。系番号は選択した平面直角座標系から自動決定します。'
             '\n設定プロファイルは処理設定をJSONで保存・読込みできます。入力・出力・CRS・確認欄は安全のため保存対象外です。'
             '\n図郭レベルはファイル寸法・番号の選択で、DEM精度の保証ではありません。'
@@ -539,6 +539,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             c.update(curvature_limit=.05,elevation_range=[0.,3000.],elevation_range_auto=False)
         for key in ('smrf_cell','smrf_slope','smrf_threshold','smrf_scalar','smrf_window'):
             c[key]=self.parameterAsDouble(parameters,key.upper(),context)
+        self.profile_warnings=[]
         profile_choice=self.parameterAsEnum(parameters,'PROFILE',context)
         if profile_choice in (1,2):
             # 傾斜計算アルゴリズム(SLOPE_ALGORITHM)はプロファイルで上書きせず、
@@ -564,7 +565,13 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             protected={'inputs','output_dir','target_crs','plane_zone','input_type','confirm_elevation_metres'}
             unknown=set(saved)-set(c)-protected-{'color_model'}
             if unknown:raise QgsProcessingException('設定プロファイルに不明な項目があります: '+repr(sorted(unknown)))
+            from .engine.pipeline import profile_nodata_edge_mode
+            mode, warning = profile_nodata_edge_mode(saved, c['nodata_edge_mode'])
             c.update({k:v for k,v in saved.items() if k in c and k not in protected})
+            c['nodata_edge_mode'] = mode
+            if warning:
+                self.profile_warnings.append(warning)
+                feedback.pushWarning(warning)
             if 'sigma_unit' not in saved:
                 # v0.12.0より前のプロファイルはσを地上距離（m）で保存している。画面の選択に
                 # かかわらずm方式で読み、過去の計算条件を再現する。
@@ -617,7 +624,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         from .engine.progress import CancelledError
         feedback.pushInfo('計算バックエンド: '+BACKEND)
         feedback.pushInfo('出力: '+str(self.result_dir))
-        try:run(self.settings,feedback)
+        try:run(self.settings,feedback,profile_warnings=getattr(self, 'profile_warnings', ()))
         except CancelledError as exc:raise QgsProcessingException(str(exc)) from exc
         except Exception as exc:
             if feedback.isCanceled():raise QgsProcessingException('キャンセルしました。部分成果は未完了です。') from exc
