@@ -8,11 +8,18 @@ def numpy_gaussian(a, sigma, radius, **kwargs):
     x=np.arange(-radius,radius+1,dtype=float)
     weights=np.exp(-0.5*(x/sigma)**2)
     weights/=weights.sum()
+    mode=kwargs.get('mode','constant')
+    if mode not in ('constant','nearest'):
+        raise ValueError("NumPy fallback supports only 'constant' and 'nearest' modes")
+    cval=kwargs.get('cval',0)
     result=np.asarray(a,dtype=float)
     for axis in (0,1):
         padding=[(0,0),(0,0)]
         padding[axis]=(radius,radius)
-        padded=np.pad(result,padding,mode='constant')
+        if mode == 'nearest':
+            padded=np.pad(result,padding,mode='edge')
+        else:
+            padded=np.pad(result,padding,mode='constant',constant_values=cval)
         filtered=np.zeros_like(result)
         for offset,weight in enumerate(weights):
             slices=[slice(None),slice(None)]
@@ -31,6 +38,33 @@ def numpy_valid_minimum(a, size, **kwargs):
     integral=np.pad(padded,((1,0),(1,0)),mode='constant').cumsum(0).cumsum(1)
     sums=integral[size:,size:]-integral[:-size,size:]-integral[size:,:-size]+integral[:-size,:-size]
     return (sums==size*size).astype(np.uint8)
+
+
+def gaussian_center_fill(a, valid, sigma, radius):
+    """Gaussian smoothing with PSS-like calculation-only missing-value fill.
+
+    Raster exterior values are extended from the nearest edge (``mode='nearest'``).
+    For an otherwise valid centre cell, missing neighbours contribute the centre
+    value.  Missing centre cells remain invalid; callers keep the original mask
+    and must not treat the calculated numeric placeholder as observed elevation.
+
+    The centre substitution can be evaluated without an expensive per-pixel
+    kernel: smooth valid elevations and the binary validity mask separately, then
+    assign the absent kernel weight to the centre elevation.
+    """
+    values = np.asarray(a, dtype=float)
+    mask = np.asarray(valid, dtype=bool)
+    if values.shape != mask.shape:
+        raise ValueError('a and valid must have the same shape')
+    raw = np.where(mask & np.isfinite(values), values, 0.0)
+    if sigma == 0 or radius == 0:
+        return raw.copy()
+    weighted = gaussian_filter(raw, sigma=sigma, radius=radius, mode='nearest')
+    coverage = gaussian_filter(mask.astype(float), sigma=sigma, radius=radius,
+                               mode='nearest')
+    result = weighted + raw * (1.0 - coverage)
+    result[~mask] = 0.0
+    return result
 
 
 try:

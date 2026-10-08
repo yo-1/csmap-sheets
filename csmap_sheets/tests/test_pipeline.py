@@ -54,6 +54,15 @@ class ConfigDefaultsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'slope_algorithm must be one of'):
             validate_config(self.base_config(slope_algorithm='bogus'), Path.cwd())
 
+    def test_nodata_edge_mode_is_opt_in_and_validated(self):
+        c = validate_config(self.base_config(), Path.cwd())
+        self.assertEqual(c['nodata_edge_mode'], 'safe_mask')
+        compatible = validate_config(
+            self.base_config(nodata_edge_mode='pss_approximation'), Path.cwd())
+        self.assertEqual(compatible['nodata_edge_mode'], 'pss_approximation')
+        with self.assertRaisesRegex(ValueError, 'nodata_edge_mode must be one of'):
+            validate_config(self.base_config(nodata_edge_mode='bogus'), Path.cwd())
+
     def test_missing_slope_algorithm_notice_only_for_old_profiles(self):
         from csmap_sheets.engine.pipeline import missing_slope_algorithm_notice
         notice = missing_slope_algorithm_notice({'sigma_m': 3.0}, 'horn')
@@ -186,6 +195,66 @@ class ReliefTests(unittest.TestCase):
         self.assertEqual(int(rgba[40, 49, 3]), 0)  # radius 8 + derivative 1
         self.assertEqual(int(rgba[40, 50, 3]), 255)
         self.assertEqual(int(rgba[0, 40, 3]), 0)
+
+    def test_default_nodata_mode_is_exactly_the_existing_safe_mask(self):
+        y, x = np.mgrid[:41, :43]
+        a = 100 + x * .2 + y * .1
+        a[20, 21] = np.nan
+        default = relief(a, np.isfinite(a), 1, 2, .05, 60, [0, 3000])
+        explicit = relief(a, np.isfinite(a), 1, 2, .05, 60, [0, 3000],
+                          nodata_edge_mode='safe_mask')
+        for actual, expected in zip(default, explicit):
+            np.testing.assert_array_equal(actual, expected)
+
+    def test_pss_approximation_keeps_only_missing_centres_transparent(self):
+        a = np.full((31, 31), 100.)
+        a[15, 15] = np.nan
+        rgba, slope, curv = relief(
+            a, np.isfinite(a), 1, 2, .05, 60, [0, 3000],
+            nodata_edge_mode='pss_approximation')
+        self.assertEqual(int(rgba[15, 15, 3]), 0)
+        self.assertEqual(int(rgba[15, 14, 3]), 255)
+        self.assertEqual(int(rgba[0, 15, 3]), 255)
+        self.assertAlmostEqual(slope[15, 14], 0.)
+        self.assertAlmostEqual(curv[15, 14], 0.)
+        self.assertAlmostEqual(slope[0, 15], 0.)
+        self.assertAlmostEqual(curv[0, 15], 0.)
+
+    def test_pss_approximation_supports_both_slope_algorithms(self):
+        a = np.full((15, 17), 250.)
+        a[7, 8] = np.nan
+        valid = np.isfinite(a)
+        for algorithm in ('horn', 'central_difference'):
+            rgba, slope, curv = relief(
+                a, valid, 1, 1, .05, 60, [0, 3000],
+                slope_algorithm=algorithm,
+                nodata_edge_mode='pss_approximation')
+            self.assertEqual(int(rgba[7, 8, 3]), 0)
+            self.assertTrue(np.all(rgba[valid, 3] == 255))
+            np.testing.assert_allclose(slope[valid], 0.)
+            np.testing.assert_allclose(curv[valid], 0., atol=1e-12)
+
+    def test_pss_approximation_has_no_block_seams(self):
+        y, x = np.mgrid[:93, :97]
+        a = 300 + np.sin(x / 6) * 4 + np.cos(y / 8) * 5
+        a[45, 48] = np.nan
+        valid = np.isfinite(a)
+        kwargs = dict(nodata_edge_mode='pss_approximation')
+        expected = relief(a, valid, 1, 2, .05, 60, [0, 3000], **kwargs)[0]
+        actual = np.zeros_like(expected)
+        halo, block = 9, 29
+        for yy in range(0, a.shape[0], block):
+            for xx in range(0, a.shape[1], block):
+                x0, y0 = max(0, xx-halo), max(0, yy-halo)
+                x1 = min(a.shape[1], xx+block+halo)
+                y1 = min(a.shape[0], yy+block+halo)
+                rgba = relief(a[y0:y1, x0:x1], valid[y0:y1, x0:x1],
+                              1, 2, .05, 60, [0, 3000], **kwargs)[0]
+                bw = min(block, a.shape[1]-xx)
+                bh = min(block, a.shape[0]-yy)
+                actual[yy:yy+bh, xx:xx+bw] = rgba[
+                    yy-y0:yy-y0+bh, xx-x0:xx-x0+bw]
+        np.testing.assert_array_equal(actual, expected)
 
     def test_all_nodata(self):
         rgba, _, _ = self.render(np.full((81, 81), np.nan))
