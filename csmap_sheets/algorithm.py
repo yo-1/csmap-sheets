@@ -259,7 +259,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterMultipleLayers(
                 "FILES",
                 "入力ファイル（複数選択、フォルダー指定時は省略可）",
-                QgsProcessing.TypeFile,
+                QgsProcessing.SourceType.TypeFile,
                 optional=True,
             )
         )
@@ -267,7 +267,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterFile(
                 "INPUT_FOLDER",
                 "入力フォルダー（省略可）",
-                behavior=QgsProcessingParameterFile.Folder,
+                behavior=QgsProcessingParameterFile.Behavior.Folder,
                 optional=True,
             )
         )
@@ -280,7 +280,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterMultipleLayers(
                 "DEMS",
                 "読込み済み標高ラスタを使う場合（省略可）",
-                QgsProcessing.TypeRaster,
+                QgsProcessing.SourceType.TypeRaster,
                 optional=True,
             )
         )
@@ -313,7 +313,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         nd = QgsProcessingParameterNumber(
             "NODATA",
             "入力NoDataを上書き（空欄なら入力の定義を使用）",
-            QgsProcessingParameterNumber.Double,
+            QgsProcessingParameterNumber.Type.Double,
             optional=True,
         )
         nd.setFlags(nd.flags() | Qgis.ProcessingParameterFlag.Advanced)
@@ -360,7 +360,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterNumber(
                 "POINT_RADIUS",
                 "点群DEMの補間半径（m、範囲外は欠測）",
-                QgsProcessingParameterNumber.Double,
+                QgsProcessingParameterNumber.Type.Double,
                 2.0,
                 minValue=0.01,
                 maxValue=1000.0,
@@ -396,7 +396,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterNumber(
                 "TEXT_SKIP",
                 "テキスト：先頭の読み飛ばし行数",
-                QgsProcessingParameterNumber.Integer,
+                QgsProcessingParameterNumber.Type.Integer,
                 1,
                 minValue=0,
             )
@@ -423,7 +423,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterNumber(
                 "TEXT_CELL",
                 "テキスト：入力格子間隔（m、規則格子の場合）",
-                QgsProcessingParameterNumber.Double,
+                QgsProcessingParameterNumber.Type.Double,
                 1.0,
                 minValue=0.01,
             )
@@ -457,7 +457,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         forest_nd = QgsProcessingParameterNumber(
             "FOREST_NODATA",
             "森林航空レーザ成果の既定NoData",
-            QgsProcessingParameterNumber.Double,
+            QgsProcessingParameterNumber.Type.Double,
             -9999.0,
         )
         forest_nd.setFlags(
@@ -477,7 +477,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             param = QgsProcessingParameterNumber(
                 key,
                 label,
-                QgsProcessingParameterNumber.Integer,
+                QgsProcessingParameterNumber.Type.Integer,
                 default,
                 minValue=lo,
                 maxValue=hi,
@@ -496,7 +496,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             param = QgsProcessingParameterNumber(
                 key,
                 "SMRF：" + label,
-                QgsProcessingParameterNumber.Double,
+                QgsProcessingParameterNumber.Type.Double,
                 default,
                 minValue=0.001,
                 maxValue=1000.0,
@@ -530,7 +530,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterNumber(
                 "CELL",
                 "出力セルサイズ（m）",
-                QgsProcessingParameterNumber.Double,
+                QgsProcessingParameterNumber.Type.Double,
                 1.0,
                 minValue=0.01,
                 maxValue=100.0,
@@ -554,7 +554,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterNumber(
                 "SIGMA",
                 "曲率用平滑化の標準偏差（m。指定方式が「地上距離」のとき使用。0で平滑化なし）",
-                QgsProcessingParameterNumber.Double,
+                QgsProcessingParameterNumber.Type.Double,
                 3.0,
                 minValue=0.0,
                 maxValue=1000.0,
@@ -564,7 +564,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterNumber(
                 "SIGMA_PX",
                 "曲率用平滑化の標準偏差（計算格子の画素数。指定方式が「画素数」のとき使用。0で平滑化なし）",
-                QgsProcessingParameterNumber.Double,
+                QgsProcessingParameterNumber.Type.Double,
                 3.0,
                 minValue=0.0,
                 maxValue=128.0,
@@ -638,7 +638,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 QgsProcessingParameterNumber(
                     name,
                     label,
-                    QgsProcessingParameterNumber.Double,
+                    QgsProcessingParameterNumber.Type.Double,
                     value,
                     minValue=lo,
                     maxValue=hi,
@@ -655,7 +655,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         elev_margin = QgsProcessingParameterNumber(
             "ELEV_MARGIN",
             "自動検出時の余白（m。入力データの最小値から差し引き、最大値に加える）",
-            QgsProcessingParameterNumber.Double,
+            QgsProcessingParameterNumber.Type.Double,
             50.0,
             minValue=0.0,
             maxValue=1000.0,
@@ -698,7 +698,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 param = QgsProcessingParameterNumber(
                     "FME_" + band + "_" + suffix,
                     "FME カスタムストレッチ " + band + " " + label,
-                    QgsProcessingParameterNumber.Double,
+                    QgsProcessingParameterNumber.Type.Double,
                     value,
                     minValue=-1000000.0,
                     maxValue=1000000.0,
@@ -712,7 +712,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 QgsProcessingParameterNumber(
                     name.upper(),
                     label,
-                    QgsProcessingParameterNumber.Double,
+                    QgsProcessingParameterNumber.Type.Double,
                     value,
                     minValue=lo,
                     maxValue=hi,
@@ -744,7 +744,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         webp_quality = QgsProcessingParameterNumber(
             "XYZ_WEBP_QUALITY",
             "WebP非可逆時のQUALITY（1-100、既定75）",
-            QgsProcessingParameterNumber.Integer,
+            QgsProcessingParameterNumber.Type.Integer,
             75,
             minValue=1,
             maxValue=100,
@@ -762,7 +762,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 QgsProcessingParameterNumber(
                     key,
                     label,
-                    QgsProcessingParameterNumber.Integer,
+                    QgsProcessingParameterNumber.Type.Integer,
                     default,
                     minValue=lo,
                     maxValue=hi,
