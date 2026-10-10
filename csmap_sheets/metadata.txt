@@ -2,8 +2,9 @@
 name=CS Map Sheets
 qgisMinimumVersion=3.44
 qgisMaximumVersion=3.99
-description=DEMマージ・CS方式色調調整・国土基本図図郭GeoTIFF・XYZ PNG/WebP(可逆/非可逆)生成。森林航空レーザ成果(LEM)は.csv/.txt双方のメタデータに対応
-about=DEMを国土基本図図郭単位のGeoTIFFおよびXYZタイルへ変換し、曲率・傾斜・標高からCS立体図（長野県林業総合センター考案）の色調を付けるプラグインです。描画方式は「独自方式（v0.4互換）」と「FMEマニュアル方式」（Pacific Spatial Solutions社「FMEによるシームレスCS立体図の作成」準拠、標高・傾斜A・傾斜B・曲率A・曲率Bの5レイヤー加重合成）から選択できます。曲率飽和値はFMEマニュアル仕様（確認済み±0.1）と林野庁の設定に近いとされる暫定値（±0.03）を別プロファイルとして用意しています。傾斜の計算方式はHorn法（既定）と中央差分法（v0.9.4以前の方式、互換用）から選択できます。欠測・外縁の扱いや平滑化の条件はFME版と異なるため、画素単位の完全互換を保証するものではありません。XYZタイルはPNG（既定）とWebP（要GDAL WEBPドライバ）から選択でき、WebPは既定で非可逆(lossy、QUALITY 1-100・既定75)、設定で可逆(lossless)にも切り替えられます。QGIS 3.44向けの試作版です。
+description=Generate CS-style terrain relief from DEMs, with Japanese map-sheet GeoTIFFs and PNG/WebP XYZ tiles.
+about=CS Map Sheets mosaics and reprojects elevation data, computes slope and curvature, and generates colored CS-style terrain relief. It exports GeoTIFFs on the Japanese national base-map sheet grid, a merged GeoTIFF, and PNG or WebP XYZ tiles. Inputs include elevation rasters, GSI DEMs, LAS/LAZ point clouds (requires PDAL), text grids, and Japanese forestry airborne-laser LEM data with CSV/TXT metadata. Choose the independent legacy rendering method or the FME-manual-inspired five-layer blend. Horn and central-difference slope methods, smoothing, colors, and RGB stretch are configurable. Processing settings can be saved and loaded as JSON. WebP requires the GDAL WEBP driver and supports lossy or lossless compression. Missing-data, edge, and smoothing behavior differs from FME, so pixel-identical FME output is not guaranteed. Experimental plugin for QGIS 3.44.
+    Japanese description: DEMを国土基本図図郭単位のGeoTIFFおよびXYZタイルへ変換し、曲率・傾斜・標高からCS立体図（長野県林業総合センター考案）の色調を付けるプラグインです。描画方式は「独自方式（v0.4互換）」と「FMEマニュアル方式」（Pacific Spatial Solutions社「FMEによるシームレスCS立体図の作成」準拠、標高・傾斜A・傾斜B・曲率A・曲率Bの5レイヤー加重合成）から選択できます。曲率飽和値はFMEマニュアル仕様（確認済み±0.1）と林野庁の設定に近いとされる暫定値（±0.03）を別プロファイルとして用意しています。傾斜の計算方式はHorn法（既定）と中央差分法（v0.9.4以前の方式、互換用）から選択できます。欠測・外縁の扱いや平滑化の条件はFME版と異なるため、画素単位の完全互換を保証するものではありません。XYZタイルはPNG（既定）とWebP（要GDAL WEBPドライバ）から選択でき、WebPは既定で非可逆(lossy、QUALITY 1-100・既定75)、設定で可逆(lossless)にも切り替えられます。QGIS 3.44向けの試作版です。
 version=0.12.0
 author=Yoichi Wada
 email=yoh@mail.pippin-itabashi.net
