@@ -36,7 +36,7 @@ from .input_sources import (
     prepare_inputs,
 )
 
-VERSION = "0.12.0"
+VERSION = "0.12.1"
 PLUGIN_TITLE_JA = "図郭対応CS立体図作成プラグイン（CS Map Sheets）"
 
 
