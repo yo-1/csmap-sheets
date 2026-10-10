@@ -841,3 +841,10 @@ v0.12.0 — σの指定方式（m／px）、処理画面の区分、WebP既定�
 - metadata.txtのdescription/aboutに英語説明を追加。日本語の詳細説明も維持。
 - 必須metadata・ZIP整合性・梱包ファイルを配布スクリプトで再検査。
 - QGISサイトへのアップロードおよび審査は未実施。
+
+2026-10-11 QGISサイト検査結果とQt6準備
+- 作者提供の画面で0.12.0のSecurity & Quality検査100%、警告0・重大0を確認。
+- 同画面のQt6 Checkは赤い×。サイトの検査詳細は未取得。
+- QActionのQt6 QtGui移動に対応し、Qt5ではQtWidgetsへフォールバック。
+  QEvent.Type.Wheelを使用。QGIS 3.44/Qt5で178件中177成功、1スキップ。
+- Qt6環境の実行検証・サイト再検査は未実施。これだけでQt6完全対応とは扱わない。

@@ -4,11 +4,14 @@ from pathlib import Path
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtCore import QEvent, QObject, QTimer
 from qgis.PyQt.QtWidgets import (
-    QAction,
     QApplication,
     QAbstractSpinBox,
     QComboBox,
 )
+try:
+    from qgis.PyQt.QtGui import QAction  # Qt6
+except ImportError:
+    from qgis.PyQt.QtWidgets import QAction  # Qt5
 from qgis.core import QgsApplication
 from .provider import CSMapProvider
 
@@ -17,7 +20,7 @@ class _WheelGuard(QObject):
     """Prevent accidental value changes while the long dialog is scrolled."""
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.Wheel and isinstance(
+        if event.type() == QEvent.Type.Wheel and isinstance(
             obj, (QAbstractSpinBox, QComboBox)
         ):
             return True
