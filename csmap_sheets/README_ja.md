@@ -231,7 +231,10 @@ QGIS内でAPIパラメータのテストだけ実行する場合は、Pythonコ�
 ```python
 import unittest
 from csmap_sheets.tests.test_qgis import QgisTests
-unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(QgisTests))
+
+unittest.TextTestRunner(verbosity=2).run(
+    unittest.defaultTestLoader.loadTestsFromTestCase(QgisTests)
+)
 ```
 
 GDALが利用可能なら、tests/test_pipeline.pyの結合テストで人工DEM2枚から図郭GeoTIFF生成までを実行します。QGISのGUI操作や実DEMによる位置確認を代替するものではありません。
@@ -311,3 +314,20 @@ CS・TIFF・XYZの計算はQGIS内で実行します。新しいLAS/LAZ・不規
 実行を1回押すと最後まで処理します。XYZフォルダーはProcessingの出力として返します。
 XYZ接続の自動追加は行いません。終了後の自動読込みは従来どおり全域TIFFと図郭索引です。
 キャンセル時は部分成果のため、次回は新しい出力フォルダーで実行します。
+
+### QGIS公式リポジトリへの申請前チェック
+
+リポジトリのルートで次を実行します。検査ツールは開発用であり、プラグインの実行には不要です。
+
+```bash
+python -m pip install flake8==7.4.1 bandit==1.9.4 detect-secrets==1.5.0
+flake8 csmap_sheets tools
+bandit -r csmap_sheets -x csmap_sheets/tests
+detect-secrets scan csmap_sheets tools > /tmp/secrets.json
+python -c "import json; assert not json.load(open('/tmp/secrets.json'))['results']"
+python tools/check_plugin_package.py /tmp/csmap_sheets.zip
+```
+
+これらはGitHub Actionsでも実行します。配布ZIPには本体・説明・ライセンスを含め、
+テストやキャッシュは含めません。メタデータとZIPの検査は公式サイトでの審査を代替しません。
+機能の確認には上記のユニットテストをQGIS・GDAL・PDALのある環境で実行します。
