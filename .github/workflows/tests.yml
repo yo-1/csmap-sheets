@@ -38,6 +38,12 @@ jobs:
           python -c "import json; d=json.load(open('/tmp/secrets.json')); assert not d['results'], 'Potential secrets detected'"
       - name: Validate submission package
         run: python tools/check_plugin_package.py /tmp/csmap_sheets.zip
+      - name: Upload validated submission ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: csmap-sheets-submission
+          path: /tmp/csmap_sheets.zip
+          if-no-files-found: error
 
   unit:
     runs-on: ubuntu-24.04
