@@ -554,11 +554,15 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             if not profile_path:raise QgsProcessingException('外部JSONプロファイルを選択してください。')
             try:data=json.loads(Path(profile_path).read_text(encoding='utf-8-sig'))
             except (OSError,ValueError) as exc:raise QgsProcessingException('設定プロファイルを読み込めません: '+str(exc)) from exc
+            if not isinstance(data,dict):
+                raise QgsProcessingException('設定プロファイルはJSONオブジェクトで指定してください。')
             saved=data.get('settings',data)
+            if not isinstance(saved,dict):
+                raise QgsProcessingException('設定プロファイルのsettingsはJSONオブジェクトで指定してください。')
             protected={'inputs','output_dir','target_crs','plane_zone','input_type','confirm_elevation_metres'}
-            unknown=set(saved)-set(c)-protected-{'color_model'}
-            if unknown:raise QgsProcessingException('設定プロファイルに不明な項目があります: '+repr(sorted(unknown)))
-            c.update({k:v for k,v in saved.items() if k in c and k not in protected})
+            # Saved validated settings include engine limits not exposed in the UI.
+            # Let validate_config check the complete set rather than rejecting those limits.
+            c.update({k:v for k,v in saved.items() if k not in protected and k!='color_model'})
             if 'sigma_unit' not in saved:
                 # v0.12.0より前のプロファイルはσを地上距離（m）で保存している。画面の選択に
                 # かかわらずm方式で読み、過去の計算条件を再現する。

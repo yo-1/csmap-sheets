@@ -9,6 +9,64 @@ except ImportError:
 
 @unittest.skipUnless(AVAILABLE,'QGIS is not installed')
 class QgisTests(unittest.TestCase):
+    def test_settings_profile_round_trip(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from qgis.core import QgsProcessingException
+        from csmap_sheets.algorithm import CSMapAlgorithm
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            dem=root/'dem.tif';dem.touch()
+            profile=root/'settings.json'
+            parameters={'FILES':[str(dem)],'CRS':'EPSG:6677','METRES':True,
+                        'OUTPUT':str(root),'SAVE_PROFILE':str(profile),
+                        'SIGMA_UNIT':1,'SIGMA_PX':4.5,'SLOPE_ALGORITHM':1,
+                        'XYZ_FORMAT':1,'XYZ_WEBP_QUALITY':83}
+            context=QgsProcessingContext();feedback=QgsProcessingFeedback()
+            original=CSMapAlgorithm();original.initAlgorithm()
+            self.assertTrue(original.prepareAlgorithm(parameters,context,feedback))
+            saved=json.loads(profile.read_text())['settings']
+            self.assertIn('max_input_pixels',saved)
+            # A profile cannot replace the current input/output/CRS or confirmation.
+            payload=json.loads(profile.read_text())
+            payload['settings'].update(inputs=['missing.tif'],output_dir='wrong',
+                target_crs='invalid',input_type='lidar',confirm_elevation_metres=False)
+            profile.write_text(json.dumps(payload),encoding='utf-8-sig')
+            loaded=CSMapAlgorithm();loaded.initAlgorithm()
+            self.assertTrue(loaded.prepareAlgorithm(
+                {'FILES':[str(dem)],'CRS':'EPSG:6677','METRES':True,
+                 'OUTPUT':str(root),'PROFILE':4,'PROFILE_FILE':str(profile)},context,feedback))
+            for key,value in saved.items():
+                self.assertEqual(loaded.settings[key],value,key)
+            self.assertEqual(loaded.settings['inputs'],[str(dem)])
+            self.assertEqual(loaded.settings['input_type'],'raster')
+            self.assertTrue(loaded.settings['confirm_elevation_metres'])
+            self.assertEqual(Path(loaded.settings['output_dir']).parent,root)
+            payload['settings']['unknown_setting']=1
+            profile.write_text(json.dumps(payload))
+            with self.assertRaisesRegex(QgsProcessingException,'Unknown configuration keys'):
+                loaded.prepareAlgorithm({'FILES':[str(dem)],'CRS':'EPSG:6677',
+                    'METRES':True,'OUTPUT':str(root),'PROFILE':4,
+                    'PROFILE_FILE':str(profile)},context,feedback)
+
+    def test_invalid_settings_profile_structure(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from qgis.core import QgsProcessingException
+        from csmap_sheets.algorithm import CSMapAlgorithm
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);dem=root/'dem.tif';dem.touch();profile=root/'settings.json'
+            for data in ([],None,{'settings':[]},{'settings':None}):
+                with self.subTest(data=data):
+                    profile.write_text(json.dumps(data))
+                    alg=CSMapAlgorithm();alg.initAlgorithm()
+                    with self.assertRaisesRegex(QgsProcessingException,'JSONオブジェクト'):
+                        alg.prepareAlgorithm({'FILES':[str(dem)],'CRS':'EPSG:6677',
+                            'METRES':True,'OUTPUT':str(root),'PROFILE':4,
+                            'PROFILE_FILE':str(profile)},QgsProcessingContext(),QgsProcessingFeedback())
+
     def test_file_selection_limit_checked_before_qgis_validation(self):
         # v0.11.0: 個別選択の件数・存在は、QGIS標準の検査（各ファイルを開く）より前に検査する
         import tempfile
