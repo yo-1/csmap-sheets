@@ -819,3 +819,20 @@ v0.12.0 — σの指定方式（m／px）、処理画面の区分、WebP既定�
   2図郭のワールドファイルとGeoTIFFから計算した画素中心座標との差は0mだった。
 - Windowsとクラウドの全画素一致は再現性の検証として扱い、処理誤差がゼロである証明とはしない。
   今回の格子・座標メタデータの整合確認も、全処理の無誤差や公共測量の規定への適合を証明するものではない。
+
+2026-10-11 QGIS申請前の事前検査
+- Flake8 7.4.1: csmap_sheets/とtools/の指摘6301件を修正し0件。
+  ワイルドカードimportを明示化、未使用変数/importを除去、空白・改行を整理。
+- Bandit 1.9.4: 本体（tests除外）0件。XMLはサイズ上限とDTD/entity拒否を維持し、
+  デコード後の検査を追加。UTF-16のDTD拒否を回帰テストで確認。
+  ElementTreeはこの事前拒否、PDAL subprocessはargv/shell=Falseを理由として
+  限定したnosecを記録（検査全体の無効化ではない）。
+- detect-secrets 1.5.0: 本体・tests・toolsの検出0件。
+  既存画像SHA256の定数のみ、秘密情報ではないことを明記して例外登録。
+- metadataのhomepage/repository/trackerを公開GitHubに設定。
+  作者メールは作者指定により既存MORIZONの公開連絡先と同じものを使用。
+- tools/check_plugin_package.pyで必須metadata、URL形式、必須ファイル、
+  ZIP整合性を検査。tests/キャッシュを除外し通常ファイル権限で27ファイルを梱包。
+- QGIS 3.44.14: 178件中177件成功、1件スキップ、失敗0件。
+- 採用済みWindows出力との再比較: RGB/透明度を含め全画素一致、最大差0。
+- GitHub Actionsに事前検査を追加。公式QGISサイトの審査は未実施。

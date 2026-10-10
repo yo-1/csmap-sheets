@@ -18,6 +18,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install inspection tools
+        run: python -m pip install flake8==7.4.1 bandit==1.9.4 detect-secrets==1.5.0
+      - name: Code quality
+        run: flake8 csmap_sheets tools
+      - name: Security
+        run: bandit -r csmap_sheets -x csmap_sheets/tests
+      - name: Secrets
+        run: |
+          detect-secrets scan csmap_sheets tools > /tmp/secrets.json
+          python -c "import json; d=json.load(open('/tmp/secrets.json')); assert not d['results'], 'Potential secrets detected'"
+      - name: Validate submission package
+        run: python tools/check_plugin_package.py /tmp/csmap_sheets.zip
+
   unit:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

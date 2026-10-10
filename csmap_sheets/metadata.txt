@@ -6,10 +6,10 @@ description=DEMマージ・CS方式色調調整・国土基本図図郭GeoTIFF�
 about=DEMを国土基本図図郭単位のGeoTIFFおよびXYZタイルへ変換し、曲率・傾斜・標高からCS立体図（長野県林業総合センター考案）の色調を付けるプラグインです。描画方式は「独自方式（v0.4互換）」と「FMEマニュアル方式」（Pacific Spatial Solutions社「FMEによるシームレスCS立体図の作成」準拠、標高・傾斜A・傾斜B・曲率A・曲率Bの5レイヤー加重合成）から選択できます。曲率飽和値はFMEマニュアル仕様（確認済み±0.1）と林野庁の設定に近いとされる暫定値（±0.03）を別プロファイルとして用意しています。傾斜の計算方式はHorn法（既定）と中央差分法（v0.9.4以前の方式、互換用）から選択できます。欠測・外縁の扱いや平滑化の条件はFME版と異なるため、画素単位の完全互換を保証するものではありません。XYZタイルはPNG（既定）とWebP（要GDAL WEBPドライバ）から選択でき、WebPは既定で非可逆(lossy、QUALITY 1-100・既定75)、設定で可逆(lossless)にも切り替えられます。QGIS 3.44向けの試作版です。
 version=0.12.0
 author=Yoichi Wada
-email=
-homepage=
-tracker=
-repository=
+email=yoh@mail.pippin-itabashi.net
+homepage=https://github.com/yo-1/csmap-sheets
+tracker=https://github.com/yo-1/csmap-sheets/issues
+repository=https://github.com/yo-1/csmap-sheets
 changelog=0.12.0
     - 曲率用平滑化の標準偏差σを「地上距離（m）」に加えて「計算格子の画素数（px）」でも指定できるようにした。
       既定は従来どおり地上距離3m。方式の指定がない旧い設定はm方式として読む。
