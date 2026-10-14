@@ -810,3 +810,15 @@ v0.12.0 — σの指定方式（m／px）、処理画面の区分、WebP既定�
 - compileall成功。unittest: 総数189、成功173、スキップ16、失敗0。
   以前の「183件成功・16スキップ」は総数183を成功数と取り違えた表記。
 - Windows/QGIS実機、PSS/FME実出力の照合は未確認。FME版は変更なし。
+
+2026-10-14 PR #31 v5プロファイル往復修正（Windows報告に基づく）
+- 原因：保存はvalidate_config後の全設定、読込許可は画面設定のキー集合だったため、
+  block_size/max_sheets/max_sheet_pixels/max_input_pixels/max_input_filesが拒否された。
+  ソース上はmax_pixelsも同じ不整合の対象。エンジンの既定キーを共通の許可集合として使用。
+- 原JSON（profile_v5_test.json）を照合。パス・CRSなど保護値は読み込まず、未知キー拒否を維持。
+- 計算式・配色・欠測演算は変更なし。処理制限の整数検査でboolも拒否。
+- compileall、git diff --check成功。unittest 199件：成功182、スキップ17、失敗0。
+  公開PRコメントから最小フィクスチャを作成（元JSONそのものは公開しない）。
+  追加9件：最小再現両方式往復、非既定の制限、不正値、未知キー、構造、保護値、旧v4、旧裸JSON、不正方式。
+- Windows/QGIS Processing結線と出力再現は未確認。修正版ZIPで実機再試験が必要。
+- PSS/FME実出力照合は未確認。Draftを維持し、マージ・リリースはしない。

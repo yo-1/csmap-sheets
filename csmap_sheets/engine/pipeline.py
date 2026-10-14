@@ -307,15 +307,12 @@ def mosaic_message(c, input_report):
     return f"Mosaic: {count} DEM files"
 
 
-def validate_config(c, base_dir, feedback=None):
-    base_dir = Path(base_dir)
-    provided = set(c)
-    # NOTE: this bare default is independent_v040 (legacy)'s own value, matching pre-FME v0.4
-    # behaviour exactly. It was previously left at 0.03 (the FME-mode figure) here, so a config
-    # or external profile that picked independent_v040 while omitting curvature_limit would
-    # silently get 0.03 instead of the documented v0.4-compatible 0.05 (found by comparison
-    # against a parallel implementation, 2026-09-24; the QGIS UI itself always forces 0.05 for
-    # its built-in legacy presets, so this only bit bare configs/external profiles).
+PROFILE_EXCLUDED = frozenset({'inputs', 'output_dir', 'target_crs', 'plane_zone',
+                              'input_type', 'confirm_elevation_metres'})
+
+
+def configuration_defaults():
+    """Fresh engine defaults; also the authoritative profile key allowlist."""
     defaults = dict(sigma_m=3.0, curvature_limit=0.05, slope_max=60.0,
                     elevation_range=[0, 3000], elevation_range_auto=False,
                     elevation_range_margin=50.0, block_size=512, sheet_level=5000,
@@ -340,6 +337,41 @@ def validate_config(c, base_dir, feedback=None):
                     sigma_unit='m', sigma_px=3.0)
     defaults.update(XYZ_DEFAULTS)
     defaults.update(INPUT_DEFAULTS)
+    return defaults
+
+
+def merge_settings_profile(data, current):
+    """Merge known settings, including engine-only limits, without runtime paths."""
+    if not isinstance(data, dict):
+        raise ValueError('設定プロファイルはJSONオブジェクトである必要があります。')
+    saved = data.get('settings', data)
+    if not isinstance(saved, dict):
+        raise ValueError('設定プロファイルのsettingsはオブジェクトである必要があります。')
+    allowed = set(configuration_defaults()) | {'cell_size', 'color_model'} | PROFILE_EXCLUDED
+    unknown = set(saved) - allowed
+    if unknown:
+        raise ValueError('設定プロファイルに不明な項目があります: '+repr(sorted(unknown)))
+    merged = dict(current)
+    merged.update({k: v for k, v in saved.items()
+                   if k not in PROFILE_EXCLUDED and k != 'color_model'})
+    return merged, saved
+
+
+def settings_profile(settings):
+    return {'schema': 'csmap-settings-profile-v5',
+            'settings': {k: v for k, v in settings.items() if k not in PROFILE_EXCLUDED}}
+
+
+def validate_config(c, base_dir, feedback=None):
+    base_dir = Path(base_dir)
+    provided = set(c)
+    # NOTE: this bare default is independent_v040 (legacy)'s own value, matching pre-FME v0.4
+    # behaviour exactly. It was previously left at 0.03 (the FME-mode figure) here, so a config
+    # or external profile that picked independent_v040 while omitting curvature_limit would
+    # silently get 0.03 instead of the documented v0.4-compatible 0.05 (found by comparison
+    # against a parallel implementation, 2026-09-24; the QGIS UI itself always forces 0.05 for
+    # its built-in legacy presets, so this only bit bare configs/external profiles).
+    defaults = configuration_defaults()
     unknown = set(c) - set(defaults) - {"inputs", "output_dir", "target_crs", "cell_size", "plane_zone", "color_model"}
     if unknown:
         raise ValueError(f"Unknown configuration keys: {sorted(unknown)}")
@@ -408,7 +440,7 @@ def validate_config(c, base_dir, feedback=None):
         if len(er) != 2 or not all(math.isfinite(x) for x in er) or er[0] >= er[1]:
             raise ValueError("elevation_range must contain two increasing finite values")
     for key in ("block_size", "max_pixels", "max_sheets", "max_sheet_pixels"):
-        if not isinstance(c[key], int) or c[key] <= 0:
+        if type(c[key]) is not int or c[key] <= 0:
             raise ValueError(f"{key} must be a positive integer")
     if not 64 <= c["block_size"] <= 2048:
         raise ValueError("block_size:64..2048")

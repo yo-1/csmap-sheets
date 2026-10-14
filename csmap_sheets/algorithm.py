@@ -561,13 +561,13 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             if not profile_path:raise QgsProcessingException('外部JSONプロファイルを選択してください。')
             try:data=json.loads(Path(profile_path).read_text(encoding='utf-8-sig'))
             except (OSError,ValueError) as exc:raise QgsProcessingException('設定プロファイルを読み込めません: '+str(exc)) from exc
-            saved=data.get('settings',data)
-            protected={'inputs','output_dir','target_crs','plane_zone','input_type','confirm_elevation_metres'}
-            unknown=set(saved)-set(c)-protected-{'color_model'}
-            if unknown:raise QgsProcessingException('設定プロファイルに不明な項目があります: '+repr(sorted(unknown)))
-            from .engine.pipeline import profile_nodata_edge_mode
+            from .engine.pipeline import merge_settings_profile, profile_nodata_edge_mode
+            try:
+                merged, saved = merge_settings_profile(data, c)
+            except ValueError as exc:
+                raise QgsProcessingException(str(exc)) from exc
             mode, warning = profile_nodata_edge_mode(saved, c['nodata_edge_mode'])
-            c.update({k:v for k,v in saved.items() if k in c and k not in protected})
+            c = merged
             c['nodata_edge_mode'] = mode
             if warning:
                 self.profile_warnings.append(warning)
@@ -599,8 +599,8 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         save_value=parameters.get('SAVE_PROFILE')
         if not QgsVariantUtils.isNull(save_value) and str(save_value).strip():
             save_path=Path(self.parameterAsFileOutput(parameters,'SAVE_PROFILE',context))
-            excluded={'inputs','output_dir','target_crs','plane_zone','input_type','confirm_elevation_metres'}
-            payload={'schema':'csmap-settings-profile-v5','settings':{k:v for k,v in self.settings.items() if k not in excluded}}
+            from .engine.pipeline import settings_profile
+            payload=settings_profile(self.settings)
             try:save_path.write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
             except OSError as exc:raise QgsProcessingException('設定プロファイルを保存できません: '+str(exc)) from exc
             feedback.pushInfo('設定プロファイルを保存しました: '+str(save_path))
