@@ -12,6 +12,84 @@ except ImportError:
 
 @unittest.skipUnless(AVAILABLE, "QGIS is not installed")
 class QgisTests(unittest.TestCase):
+    def test_profile_widget_confirms_normalized_path_and_cancellation(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from qgis.PyQt.QtWidgets import QWidget, QMessageBox
+        from processing.gui.wrappers import (
+            WidgetWrapperFactory, InvalidParameterValue,
+        )
+        from csmap_sheets.algorithm import CSMapAlgorithm
+
+        alg = CSMapAlgorithm()
+        alg.initAlgorithm()
+        dialog = QWidget()
+        wrapper = WidgetWrapperFactory.create_wrapper(
+            alg.parameterDefinition("SAVE_PROFILE"), dialog,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            base = str(Path(tmp) / "設定")
+            target = Path(base + ".json")
+            target.write_text("original")
+            wrapper.setValue(base)
+            with patch(
+                "csmap_sheets.profile_widget.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.No,
+            ) as question:
+                with self.assertRaises(InvalidParameterValue):
+                    wrapper.value()
+                self.assertIn(str(target), question.call_args.args[2])
+            self.assertEqual(target.read_text(), "original")
+            with patch(
+                "csmap_sheets.profile_widget.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ) as question:
+                self.assertEqual(wrapper.value(), str(target))
+                self.assertEqual(wrapper.value(), str(target))
+                self.assertEqual(question.call_count, 1)
+            with patch(
+                "csmap_sheets.profile_widget.QFileDialog.getSaveFileName",
+                return_value=(base, "JSON (*.json)"),
+            ), patch(
+                "csmap_sheets.profile_widget.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.No,
+            ):
+                wrapper.setValue("prior.JSON")
+                wrapper._browse()
+                self.assertEqual(wrapper.edit.text(), "prior.JSON")
+            wrapper.setValue("")
+            self.assertIsNone(wrapper.value())
+
+    def test_sheet_index_style_on_first_and_repeated_load(self):
+        import tempfile
+        from pathlib import Path
+        from qgis.core import QgsVectorLayer, QgsVectorFileWriter, QgsProject
+        from qgis.PyQt.QtCore import Qt
+        from csmap_sheets.engine.output_style import write_sheet_index_style
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sheet_index.gpkg"
+            layer = QgsVectorLayer("Polygon?crs=EPSG:6677", "sheets", "memory")
+            options = QgsVectorFileWriter.SaveVectorOptions()
+            options.driverName = "GPKG"
+            QgsVectorFileWriter.writeAsVectorFormatV3(
+                layer, str(path),
+                QgsProject.instance().transformContext(), options,
+            )
+            write_sheet_index_style(path)
+            for _ in range(2):
+                loaded = QgsVectorLayer(str(path), "sheets", "ogr")
+                self.assertTrue(loaded.isValid())
+                symbol_layer = loaded.renderer().symbol().symbolLayer(0)
+                self.assertEqual(
+                    symbol_layer.brushStyle(), Qt.BrushStyle.NoBrush
+                )
+                self.assertEqual(
+                    symbol_layer.strokeStyle(), Qt.PenStyle.SolidLine
+                )
+                loaded = None
+
     def test_settings_profile_round_trip(self):
         import json
         import tempfile
@@ -29,7 +107,7 @@ class QgisTests(unittest.TestCase):
                 "CRS": "EPSG:6677",
                 "METRES": True,
                 "OUTPUT": str(root),
-                "SAVE_PROFILE": str(profile),
+                "SAVE_PROFILE": str(profile.with_suffix("")),
                 "SIGMA_UNIT": 1,
                 "SIGMA_PX": 4.5,
                 "SLOPE_ALGORITHM": 1,
@@ -95,6 +173,49 @@ class QgisTests(unittest.TestCase):
                     context,
                     feedback,
                 )
+
+    def test_geotiff_ignores_text_grid_spacing(self):
+        import tempfile
+        from pathlib import Path
+        import numpy as np
+        from osgeo import gdal, osr
+        from csmap_sheets.algorithm import CSMapAlgorithm
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dem = root / "dem.tif"
+            srs = osr.SpatialReference()
+            srs.ImportFromEPSG(6677)
+            source = gdal.GetDriverByName("GTiff").Create(
+                str(dem), 64, 64, 1, gdal.GDT_Float32,
+            )
+            source.SetProjection(srs.ExportToWkt())
+            source.SetGeoTransform((-100, 1, 0, 0, 0, -1))
+            yy, xx = np.mgrid[:64, :64]
+            source.GetRasterBand(1).WriteArray(100 + xx * .2 + yy * .1)
+            source.GetRasterBand(1).SetNoDataValue(-9999)
+            source = None
+            images = []
+            for spacing in (1, 7):
+                alg = CSMapAlgorithm()
+                alg.initAlgorithm()
+                parameters = {
+                    "FILES": [str(dem)], "CRS": "EPSG:6677",
+                    "METRES": True, "OUTPUT": str(root),
+                    "TEXT_CELL": spacing, "CELL": 1, "LEVEL": 3,
+                    "LOAD": False, "XYZ": False, "MERGED_GEOTIFF": False,
+                }
+                context = QgsProcessingContext()
+                feedback = QgsProcessingFeedback()
+                self.assertTrue(alg.prepareAlgorithm(
+                    parameters, context, feedback,
+                ))
+                outputs = alg.processAlgorithm(parameters, context, feedback)
+                image = gdal.Open(outputs["CS_IMAGE"])
+                self.assertEqual(abs(image.GetGeoTransform()[1]), 1)
+                images.append(image.ReadAsArray())
+                image = None
+            np.testing.assert_array_equal(*images)
 
     def test_invalid_settings_profile_structure(self):
         import json

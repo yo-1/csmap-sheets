@@ -857,3 +857,14 @@ v0.12.0 — σの指定方式（m／px）、処理画面の区分、WebP既定�
 - QGIS 3.44/Qt5: 178件中177成功、1スキップ、失敗0。
 - Flake8、コンパイル、ZIP（27ファイル）とgit diff --check成功。
 - サイトのQt6再検査、Qt6環境での実行、0.12.1アップロードは未実施。
+
+2026-10-17 v0.12.3 保存・図郭表示・入力案内
+- 基準main fdfb133。PR #32の再読込修正・#38〜41は反映済み、未マージ#31は別件。
+- JSON最終保存名補完（.json/.JSON保持）、最終パスのGUI上書き確認、図郭QML、GeoTIFF案内を追加。
+- Linux QGIS 3.44.15 / GDAL 3.8.4: 182件中180成功、2スキップ、失敗0。
+- QGISなし: 182件中161成功、21スキップ、失敗0。
+- 実QGISで設定保存・再読込、上書き拒否・取消、QML初回/再読込を確認。
+- GeoTIFFのTEXT_CELL=1/7で出力RGBA全画素一致、出力格子1mを確認。
+- Flake8 / Bandit / detect-secrets / compileall / diff --check / 30ファイルZIP検査合格。
+- 詳細とWindows確認手順: docs/validation/ui-fixes-0.12.3.md。
+- 未確認: Windowsネイティブ保存ダイアログ、DPI・表示幅、ZIP再導入、Qt6実行。

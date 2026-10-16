@@ -25,7 +25,6 @@ from qgis.core import (
     QgsProcessingOutputFolder,
     QgsProcessingParameterFile,
     QgsProcessingParameterString,
-    QgsProcessingParameterFileDestination,
     QgsCoordinateReferenceSystem,
 )
 
@@ -181,6 +180,9 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             "CSV/XYZ格子、TIFF+TFW、GeoTIFFとZIPを自動判別"
             "します。"
             "地理院ZIPは自動読込み、LASは分類方法を選択します。"
+            "\n入力セル間隔はGeoTIFFから自動取得するため、テキスト入力格子間隔の設定は不要です。"
+            "テキストの入力格子間隔は規則格子テキスト専用です。"
+            "出力セルサイズは再投影後の計算・出力格子の間隔で、入力セル間隔とは別の設定です。"
             "\n鉛直基準の変換は行いません。標高基準をそろえたデータを使用してください。"
             "\n出力先の下に毎回新しいcsmap_日時_識別子フォルダーを作ります。"
             "\n描画方式は「独自方式 v0.4互換」と「FMEマニュアル方式」を明示的に分けます。"
@@ -231,12 +233,16 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             profile_file.flags() | Qgis.ProcessingParameterFlag.Advanced
         )
         self.addParameter(profile_file)
-        save_profile = QgsProcessingParameterFileDestination(
+        save_profile = QgsProcessingParameterString(
             "SAVE_PROFILE",
             "現在の処理設定をJSONへ保存（省略可）",
-            fileFilter="JSON (*.json)",
             optional=True,
         )
+        save_profile.setMetadata({"widget_wrapper": {
+            "class": (
+                "csmap_sheets.profile_widget.ProfileDestinationWidgetWrapper"
+            )
+        }})
         save_profile.setFlags(
             save_profile.flags() | Qgis.ProcessingParameterFlag.Advanced
         )
@@ -422,7 +428,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterNumber(
                 "TEXT_CELL",
-                "テキスト：入力格子間隔（m、規則格子の場合）",
+                "テキスト：入力格子間隔（m、規則格子テキスト専用・GeoTIFFでは不要）",
                 QgsProcessingParameterNumber.Type.Double,
                 1.0,
                 minValue=0.01,
@@ -529,7 +535,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterNumber(
                 "CELL",
-                "出力セルサイズ（m）",
+                "出力セルサイズ（m、再投影後の計算・出力格子）",
                 QgsProcessingParameterNumber.Type.Double,
                 1.0,
                 minValue=0.01,
@@ -1440,9 +1446,11 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         feedback.pushInfo(smoothing_summary(self.settings))
         save_value = parameters.get("SAVE_PROFILE")
         if not QgsVariantUtils.isNull(save_value) and str(save_value).strip():
-            save_path = Path(
-                self.parameterAsFileOutput(parameters, "SAVE_PROFILE", context)
-            )
+            from .profile_paths import json_path
+
+            save_path = Path(json_path(
+                self.parameterAsString(parameters, "SAVE_PROFILE", context)
+            ))
             excluded = {
                 "inputs",
                 "output_dir",

@@ -433,6 +433,12 @@ class IntegrationTests(unittest.TestCase):
             )
             left = right = None
             self.assertTrue((root / "result/sheet_index.gpkg").exists())
+            from csmap_sheets.engine.output_style import SHEET_INDEX_STYLE
+
+            self.assertEqual(
+                (root / "result/sheet_index.qml").read_text(),
+                SHEET_INDEX_STYLE
+            )
             self.assertEqual(
                 json.loads(
                     (root / "result/run.json").read_text(encoding="utf-8")

@@ -275,6 +275,9 @@ def cut_sheets(source_path, output_dir, c, gdal, ogr, osr, feedback=None):
             75 + 10 * number / len(candidates),
         )
     layer = index = src = None
+    from .output_style import write_sheet_index_style
+
+    write_sheet_index_style(out.parent / "sheet_index.gpkg")
     if written == 0:
         raise ValueError("No nonempty sheets produced")
     return dict(written=written, skipped_empty=skipped)
