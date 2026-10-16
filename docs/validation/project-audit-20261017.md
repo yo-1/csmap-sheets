@@ -13,6 +13,18 @@
 - #31 はPSS**近似**モードのDraft PR。GDAL 3.8.4の図郭比較190件中186成功、4スキップ、0失敗。人工DEM4組合せのRGBA差0。PSS/FME実出力との一致を保証しない。
 - #31 head `d68154542934451498841fe5aec0dda7606d19c4` とmainの比較: diverged、ahead 5、behind 26、変更14ファイル。統合競合の有無は未検証。
 
+## v0.12.2 公開整合記録（2026-10-17 05:11 JST）
+- QGIS公式公開版: [0.12.2](https://plugins.qgis.org/plugins/csmap_sheets/version/0.12.2/)（実験的プラグイン）。ユーザー提供画面でAll Plugins掲載、日本語説明、インストール済み／提供版0.12.2を確認済み。
+- [GitHub Release v0.12.2](https://github.com/yo-1/csmap-sheets/releases/tag/v0.12.2) を2026-10-17 05:11 JSTに公開。Pre-release。
+- タグの実参照先: `fdfb133e1b00d9239472876e574541c61ea22434`（PR #41マージ）。APIのrefs/tags/v0.12.2で確認。
+- 登録用資産: `csmap_sheets-v0.12.2.zip`、252254 bytes、27ファイル、metadata version=0.12.2。
+- SHA-256: `3497e77cca09223661cb55b20f2cdc940fe37b073e042c6ff2dd0a27b442852b`。ローカル計算とGitHub資産digestが一致。`SHA256SUMS.txt`も添付。
+- ZIP内の27ファイルすべてのGit blob SHAをタグ対象の配布対象ファイルと照合し一致。ZIP整合性検査も成功。
+- 公式自動検査: ユーザー提供記録ではセキュリティ・品質5件合格、情報0・警告0・重大0、Qt6チェック合格（画面の実行日時2026-10-14 10:10 JST）。Qt6実行試験や全Windows受入試験の合格とは区別する。
+- PR #40の日本語説明、PR #41の版更新、Qt6対応を含む。PR #42の0.12.3変更と未マージPR #31は含まない。
+- 開発コードの基準mainは `1fd7268d5ebd38a313cb397ace8eeaca4b607d0d`、version=0.12.3。以後の文書コミットでmain SHAは更新されるため都度取得する。
+- v0.12.2の修正・検証・申請・公式公開確認とGitHub配布整合は完了。下記v0.12.3／PR #31／実データ比較の未確認事項は残る。
+
 ## 残作業と完了条件
 | ID | 担当 | 作業 | 完了条件 |
 |---|---|---|---|
@@ -29,7 +41,7 @@
 - #31はW2/W4の評価とA1が完了するまでDraft維持。既定safe_maskの非退行を必須とする。
 - FME/MIERUNE/PSSと「完全一致」「同等」とは、対応する参照成果で確認するまで表記しない。
 - 地形判読上の有用性、計算の数値一致、運用・納品適合性を別指標で判定。
-- 公開済みv0.12.1、mainのv0.12.3、GitHub Release、QGIS公式登録版を混同しない。
+- 公開済みv0.12.2、mainのv0.12.3、GitHub Release、QGIS公式登録版を混同しない。
 - ZIP公開・公式申請は版と実機検証が整ってから個別に判断する。
 
 ## Windows受入試験の最小証跡
