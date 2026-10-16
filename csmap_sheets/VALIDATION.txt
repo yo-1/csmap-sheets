@@ -868,3 +868,17 @@ v0.12.0 — σの指定方式（m／px）、処理画面の区分、WebP既定�
 - Flake8 / Bandit / detect-secrets / compileall / diff --check / 30ファイルZIP検査合格。
 - 詳細とWindows確認手順: docs/validation/ui-fixes-0.12.3.md。
 - 未確認: Windowsネイティブ保存ダイアログ、DPI・表示幅、ZIP再導入、Qt6実行。
+
+===============================================================================
+v0.12.2 公開整合記録（2026-10-17 05:11 JST）
+- QGIS公式公開版: [0.12.2](https://plugins.qgis.org/plugins/csmap_sheets/version/0.12.2/)（実験的プラグイン）。ユーザー提供画面でAll Plugins掲載、日本語説明、インストール済み／提供版0.12.2を確認済み。
+- [GitHub Release v0.12.2](https://github.com/yo-1/csmap-sheets/releases/tag/v0.12.2) を2026-10-17 05:11 JSTに公開。Pre-release。
+- タグの実参照先: `fdfb133e1b00d9239472876e574541c61ea22434`（PR #41マージ）。APIのrefs/tags/v0.12.2で確認。
+- 登録用資産: `csmap_sheets-v0.12.2.zip`、252254 bytes、27ファイル、metadata version=0.12.2。
+- SHA-256: `3497e77cca09223661cb55b20f2cdc940fe37b073e042c6ff2dd0a27b442852b`。ローカル計算とGitHub資産digestが一致。`SHA256SUMS.txt`も添付。
+- ZIP内の27ファイルすべてのGit blob SHAをタグ対象の配布対象ファイルと照合し一致。ZIP整合性検査も成功。
+- 公式自動検査: ユーザー提供記録ではセキュリティ・品質5件合格、情報0・警告0・重大0、Qt6チェック合格（画面の実行日時2026-10-14 10:10 JST）。Qt6実行試験や全Windows受入試験の合格とは区別する。
+- PR #40の日本語説明、PR #41の版更新、Qt6対応を含む。PR #42の0.12.3変更と未マージPR #31は含まない。
+- 開発コードの基準mainは `1fd7268d5ebd38a313cb397ace8eeaca4b607d0d`、version=0.12.3。以後の文書コミットでmain SHAは更新されるため都度取得する。
+- v0.12.2の修正・検証・申請・公式公開確認とGitHub配布整合は完了。下記v0.12.3／PR #31／実データ比較の未確認事項は残る。
+
