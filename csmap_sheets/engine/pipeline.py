@@ -36,7 +36,7 @@ from .input_sources import (
     prepare_inputs,
 )
 
-VERSION = "0.12.2"
+VERSION = "0.12.3"
 PLUGIN_TITLE_JA = "図郭対応CS立体図作成プラグイン（CS Map Sheets）"
 
 
@@ -1032,6 +1032,9 @@ def render_sheets(projected_path, out, c, gdal, ogr, osr, feedback=None):
             10 + 70 * number / len(candidates),
         )
     layer = index = src = None
+    from .output_style import write_sheet_index_style
+
+    write_sheet_index_style(out / "sheet_index.gpkg")
     try:
         work.rmdir()
     except OSError:
