@@ -160,8 +160,10 @@ class QgisTests(unittest.TestCase):
             self.assertEqual(Path(loaded.settings["output_dir"]).parent, root)
             payload["settings"]["unknown_setting"] = 1
             profile.write_text(json.dumps(payload))
+            # Unknown keys are rejected by merge_settings_profile() before
+            # validate_config(); both paths reject, only the wording differs.
             with self.assertRaisesRegex(
-                QgsProcessingException, "Unknown configuration keys"
+                QgsProcessingException, "設定プロファイルに不明な項目があります"
             ):
                 loaded.prepareAlgorithm(
                     {
@@ -387,6 +389,12 @@ class QgisTests(unittest.TestCase):
         self.assertEqual(
             alg.parameterDefinition("SIGMA_PX").defaultValue(), 3.0
         )
+        self.assertEqual(
+            alg.parameterDefinition("NODATA_EDGE_MODE").defaultValue(), 0
+        )
+        self.assertEqual(
+            len(alg.parameterDefinition("NODATA_EDGE_MODE").options()), 2
+        )
         # v0.12.0: すべての項目の表示名の先頭に【区分】が付き、σの3欄は続けて並ぶ
         names = [d.name() for d in alg.parameterDefinitions()]
         for definition in alg.parameterDefinitions():
@@ -394,8 +402,14 @@ class QgisTests(unittest.TestCase):
                 definition.description().startswith("【"), definition.name()
             )
         self.assertEqual(
-            names[names.index("SIGMA_UNIT"): names.index("SIGMA_UNIT") + 4],
-            ["SIGMA_UNIT", "SIGMA", "SIGMA_PX", "SLOPE_ALGORITHM"],
+            names[names.index("SIGMA_UNIT"): names.index("SIGMA_UNIT") + 5],
+            [
+                "SIGMA_UNIT",
+                "SIGMA",
+                "SIGMA_PX",
+                "SLOPE_ALGORITHM",
+                "NODATA_EDGE_MODE",
+            ],
         )
 
 

@@ -906,3 +906,69 @@ v0.12.2 公開整合記録（2026-10-17 05:11 JST）
 - 3種のMarkdown正本を整備。既定・暫定推奨・比較検証済みの範囲を区別。
 - 詳細はdocs/validation/user-guides-20261020.md。CI結果を同記録とPRへ追記。
 - 環境起動失敗によりローカル試験未実行。Release・公式登録・mainは変更しない。
+
+===============================================================================
+以下の3件はPR #31（codex/nodata-edge-mode）ブランチ上の記録。2026-10-21にmain（v0.12.4以降）へ取り込んだ。
+
+2026-10-05 欠測・端部の互換モード（先行実装）
+
+内容:
+- 設定`nodata_edge_mode`を追加。既定`safe_mask`は従来処理を変えない。
+- 選択時だけ使う`pss_approximation`は、ラスター外を最寄り端値で延長し、計算に必要な近傍が
+  NoDataなら対象画素の中心値を代用する。元DEM・有効マスクは変更せず、NoData中心は透明のまま。
+- Gaussian平滑化、5点ラプラシアンによる曲率、Horn法／中央差分法の傾斜へ同じ方針を適用。
+- QGIS処理画面、JSON設定・保存プロファイル、実行ログ、run.json、GeoTIFF SETTINGSへ記録。
+
+検証（Codex環境、Pythonユニットテスト）:
+- 既定呼出しと`safe_mask`明示指定が配列単位で完全一致すること。
+- 定数面の中央NoDataで、NoData中心だけが透明、隣接画素と外周が不透明、傾斜・曲率が0であること。
+- Horn法と中央差分法の両方、処理ブロック分割の継ぎ目、SciPyとNumPy fallbackの端値延長を確認。
+- `python -m compileall -q csmap_sheets`成功。
+- `python -m unittest discover -s csmap_sheets/tests -t . -v`成功。
+
+未確認・制約:
+- Windows/QGIS実機での画面表示、実DEM処理、設定プロファイルの保存・再読込は未確認。
+- PSS/FMEの参照成果との数値・画像比較は未実施。方式名どおり近似であり、完全互換とはしない。
+- GDAL/QGISを必要とするテストは、この環境にランタイムがないためスキップ。
+
+
+2026-10-08 PR #31 旧プロファイル修正・図郭余白確認
+- 着手時git fetch: codex/nodata-edge-mode = 1894b9d32ba3b96bbf87b16f166a509ca1a0d271。
+- 旧外部プロファイルはsafe_maskへ固定。異なる画面選択は警告し、run.jsonへ記録。
+- v4、明示2方式、不正値をQGIS非依存の関数と既存validate_configで試験。
+- render_sheetsは図郭にceil(4σ_px)+1画素の余白を付けてWarpし、計算後に除去する。
+- 人工DEM(100x160、欠測穴あり、σ=2.5px、余白11px)で、隣接2領域を
+  余白付きで個別計算・切出ししたRGBAと一括計算を比較。safe_mask/pss_approximation、
+  Horn/中央差分の全4組合せで全画素完全一致（最大差0、差のある位置なし）。
+- この試験は配列による余白経路の再現。GDAL Warpを含む図郭出力経路は未実行。
+- compileall成功。unittest: 総数189、成功173、スキップ16、失敗0。
+  以前の「183件成功・16スキップ」は総数183を成功数と取り違えた表記。
+- Windows/QGIS実機、PSS/FME実出力の照合は未確認。FME版は変更なし。
+
+2026-10-14 PR #31 v5プロファイル往復修正（Windows報告に基づく）
+- 原因：保存はvalidate_config後の全設定、読込許可は画面設定のキー集合だったため、
+  block_size/max_sheets/max_sheet_pixels/max_input_pixels/max_input_filesが拒否された。
+  ソース上はmax_pixelsも同じ不整合の対象。エンジンの既定キーを共通の許可集合として使用。
+- 原JSON（profile_v5_test.json）を照合。パス・CRSなど保護値は読み込まず、未知キー拒否を維持。
+- 計算式・配色・欠測演算は変更なし。処理制限の整数検査でboolも拒否。
+- compileall、git diff --check成功。unittest 199件：成功182、スキップ17、失敗0。
+  公開PRコメントから最小フィクスチャを作成（元JSONそのものは公開しない）。
+  追加9件：最小再現両方式往復、非既定の制限、不正値、未知キー、構造、保護値、旧v4、旧裸JSON、不正方式。
+- Windows/QGIS Processing結線と出力再現は未確認。修正版ZIPで実機再試験が必要。
+- PSS/FME実出力照合は未確認。Draftを維持し、マージ・リリースはしない。
+
+===============================================================================
+2026-10-21 PR #31をmain（v0.12.4以降）へ取り込み
+- 取り込み元main: 92b8c28（v0.12.4のタグ2f8951b＋文書のみのPR #50）。PR #31先端d681545へmerge commitで取り込み、履歴は書き換えていない。
+- 衝突6ファイル（algorithm.py、engine/pipeline.py、engine/filters.py、tests/test_qgis.py、README_ja.md、VALIDATION.txt）を、main側の整形（Flake8対応）とv0.12.4のマージ済み標高DEM保存を保ったまま、PR #31の欠測・端部方式・旧プロファイルのsafe_mask固定と警告・v5往復を再適用して解消した。
+- configuration_defaults()（プロファイル許可集合の正本）にmerged_dem_enabledを含めた。保存は既存のjson_path（.json補完）とsettings_profile()（v5）を併用。
+- 未知キーはmerge_settings_profile()が先に拒否するため、QGISテストの期待文言をvalidate_configの英語文言から日本語文言へ合わせた（拒否する動作は同じ）。
+- PR #31側のテスト・コードをFlake8 7.4.1に合わせて整形（ロジック変更なし）。Flake8・Bandit 1.9.4は指摘0。
+- 追加試験2件：merged_dem_enabled（真/偽）と両方式の組合せでのv5往復、merged_dem_enabledの型検査。
+- 既定出力の同一性：v0.12.4タグと統合後ツリーで、同じ合成DEM（2枚・重なり・内部の欠測穴・外周に接する欠測・角の欠落）を6条件
+  （独自方式、FME方式Horn／中央差分、σ px、PNG XYZ＋標高DEM保存、WebP XYZ）で処理し、出力ラスタ（図郭・結合GeoTIFF・XYZ・dem_merged.tif）
+  計81ファイルの寸法・ジオトランスフォーム・画素値が全一致（差0）。run.jsonのsettingsの差は新キーnodata_edge_modeのみ。
+- unittest（Python 3.12、GDALなし）：215件、成功192、スキップ23、失敗0。
+- unittest（GDAL 3.8.4 / NumPy 1.26.4 / SciPy 1.13.1）：215件、成功206、スキップ9、失敗0。図郭ごとのGDAL描画と一括描画の比較（test_sheet_seams_gdal）は実行・成功。
+- 参考：QGIS 3.34.4（対応範囲3.44未満）では、QGIS APIテスト9件がv0.12.4と同じくQgis.ProcessingParameterFlag未定義でエラー。v0.12.4でも同じ9件のため統合による退行ではない。QGIS 3.44での実行はこの環境では未実施。
+- 未確認：Windows/QGIS 3.44の実機（方式選択の画面表示・実DEM出力、方式とマージ済み標高DEMを含むv5プロファイルの保存・再読込、旧プロファイルの警告表示）、QGIS 3.44でのQGIS APIテスト、PSS/FME実出力との比較。
