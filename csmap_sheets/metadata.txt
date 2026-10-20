@@ -8,6 +8,7 @@ about=多様な標高データから、傾斜・曲率・標高を組み合わ�
     計算方式・パラメータを選択：傾斜計算はHorn法（既定）・中央差分法から選択できます。描画方式、平滑化、曲率の範囲、配色なども調整でき、設定をJSONで保存・再利用できます。
     GIS・Web配信用の出力：国土基本図の図郭単位のGeoTIFF、全域を結合したGeoTIFF、PNG・WebP形式のXYZタイルを作成できます。WebPは可逆・非可逆圧縮を選択できます。
     FMEから利用できる姉妹ツール：FME CSMap Pipelineも公開しています。FMEのSystemCallerから呼び出せるツールです。 https://github.com/yo-1/fme-csmap-pipeline
+    利用手順書（オンライン）：https://github.com/yo-1/csmap-sheets/blob/main/docs/user-guide.md
     English: CS Map Sheets generates CS terrain relief from elevation rasters, GSI DEMs (ZIP/XML), forestry LEM data with CSV/TXT metadata, elevation text grids, and LAS/LAZ point clouds. Choose Horn (default) or central-difference slope calculations, rendering methods, smoothing, curvature ranges, and colors. Save and reload settings as JSON. Export Japanese national base-map sheet GeoTIFFs, a merged GeoTIFF, and PNG/WebP XYZ tiles with lossy or lossless WebP compression. The companion FME CSMap Pipeline can be called from FME SystemCaller: https://github.com/yo-1/fme-csmap-pipeline
 version=0.12.3
 author=Yoichi Wada

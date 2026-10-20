@@ -38,6 +38,8 @@ jobs:
           python -c "import json; d=json.load(open('/tmp/secrets.json')); assert not d['results'], 'Potential secrets detected'"
       - name: Validate submission package
         run: python tools/check_plugin_package.py /tmp/csmap_sheets.zip
+      - name: Check Markdown repository links
+        run: python tools/check_markdown_links.py
       - name: Test submission checks
         run: python -m unittest discover -s tools/tests -v
       - name: Inspect the actual submission ZIP
@@ -77,3 +79,34 @@ jobs:
         run: /usr/bin/python3 -c "from osgeo import gdal; import numpy, scipy; print('GDAL', gdal.VersionInfo('RELEASE_NAME'), 'numpy', numpy.__version__, 'scipy', scipy.__version__, 'WEBP', gdal.GetDriverByName('WEBP') is not None)"
       - name: Unit and GDAL integration tests
         run: /usr/bin/python3 -m unittest discover -s csmap_sheets/tests -t . -v
+
+  qgis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    container:
+      image: qgis/qgis:release-3_44
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONPATH: /usr/share/qgis/python:/usr/share/qgis/python/plugins:.
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install test dependencies and Japanese fonts
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3-scipy fonts-noto-cjk
+      - name: Confirm supported QGIS version
+        run: |
+          python3 -c "from qgis.core import Qgis; from osgeo import gdal; print('QGIS', Qgis.QGIS_VERSION, 'GDAL', gdal.VersionInfo('RELEASE_NAME')); assert 34400 <= Qgis.QGIS_VERSION_INT < 34500"
+      - name: Full QGIS regression suite
+        run: python3 tools/run_qgis_tests.py
+      - name: Build package and test real help links
+        run: |
+          python3 tools/check_plugin_package.py /tmp/csmap_sheets.zip
+          python3 tools/check_qgis_package.py /tmp/csmap_sheets.zip --screenshots /tmp/help-screenshots
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: csmap-sheets-help-screenshots
+          path: /tmp/help-screenshots
+          if-no-files-found: warn

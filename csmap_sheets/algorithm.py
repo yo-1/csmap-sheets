@@ -168,11 +168,19 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
     def tags(self):
         return ["CS", "DEM", "国土基本図", "図郭", "立体図", "色調", "merge"]
 
+    def helpUrl(self):
+        return (
+            "https://github.com/yo-1/csmap-sheets/blob/main/docs/user-guide.md"
+        )
+
     def shortHelpString(self):
         from .engine.pipeline import version_banner
 
         return (
             version_banner() + "\n"
+            '<a href="' + self.helpUrl() + '">利用手順書</a> ｜ '
+            '<a href="https://github.com/yo-1/csmap-sheets/blob/main/docs/'
+            'recommended-settings.md">推奨設定</a>（オンライン）\n'
             "複数DEM→平面直角座標系へ整合→独自CS方式画像→国土基本図図郭Ge"
             "oTIFF→XYZタイル（EPSG:3857、PNGまたはWebP）。"
             "入力形式を選び、ファイルまたはフォルダーを指定します。LAS/LAZと不規則テキスト点には外部PDAL 2.9以降が必要です。"
