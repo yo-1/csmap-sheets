@@ -1423,11 +1423,13 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 merged, saved = merge_settings_profile(data, c)
             except ValueError as exc:
                 raise QgsProcessingException(str(exc)) from exc
-            mode, warning = profile_nodata_edge_mode(
+            # Do not reuse "mode": it holds the input type and is read again
+            # below for the direct file-selection check.
+            edge_mode, warning = profile_nodata_edge_mode(
                 saved, c["nodata_edge_mode"]
             )
             c = merged
-            c["nodata_edge_mode"] = mode
+            c["nodata_edge_mode"] = edge_mode
             if warning:
                 self.profile_warnings.append(warning)
                 feedback.pushWarning(warning)
