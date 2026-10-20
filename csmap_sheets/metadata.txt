@@ -9,13 +9,17 @@ about=多様な標高データから、傾斜・曲率・標高を組み合わ�
     GIS・Web配信用の出力：国土基本図の図郭単位のGeoTIFF、全域を結合したGeoTIFF、PNG・WebP形式のXYZタイルを作成できます。WebPは可逆・非可逆圧縮を選択できます。
     FMEから利用できる姉妹ツール：FME CSMap Pipelineも公開しています。FMEのSystemCallerから呼び出せるツールです。 https://github.com/yo-1/fme-csmap-pipeline
     English: CS Map Sheets generates CS terrain relief from elevation rasters, GSI DEMs (ZIP/XML), forestry LEM data with CSV/TXT metadata, elevation text grids, and LAS/LAZ point clouds. Choose Horn (default) or central-difference slope calculations, rendering methods, smoothing, curvature ranges, and colors. Save and reload settings as JSON. Export Japanese national base-map sheet GeoTIFFs, a merged GeoTIFF, and PNG/WebP XYZ tiles with lossy or lossless WebP compression. The companion FME CSMap Pipeline can be called from FME SystemCaller: https://github.com/yo-1/fme-csmap-pipeline
-version=0.12.3
+version=0.12.4
 author=Yoichi Wada
 email=yoh@mail.pippin-itabashi.net
 homepage=https://github.com/yo-1/csmap-sheets
 tracker=https://github.com/yo-1/csmap-sheets/issues
 repository=https://github.com/yo-1/csmap-sheets
-changelog=0.12.3
+changelog=0.12.4
+    - マージ・格子整合済みの標高DEMをdem_merged.tifとして任意保存。既定オフ。
+    - Processing出力とrun.jsonへの保存先記録を追加。図郭別DEMは対象外。
+
+    0.12.3
     - 設定JSONの拡張子自動付与と最終パスの上書き確認、図郭の枠線表示、GeoTIFF入力案内を改善。
 
     0.12.2

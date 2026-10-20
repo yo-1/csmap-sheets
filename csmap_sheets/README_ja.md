@@ -240,7 +240,7 @@ unittest.TextTestRunner(verbosity=2).run(
 
 GDALが利用可能なら、tests/test_pipeline.pyの結合テストで人工DEM2枚から図郭GeoTIFF生成までを実行します。QGISのGUI操作や実DEMによる位置確認を代替するものではありません。
 
-## マージ済み標高DEMの保存（開発中の追加機能）
+## マージ済み標高DEMの保存（v0.12.4）
 
 出力設定の「マージ・格子整合済みの標高DEMをGeoTIFFでも保存する」をオンにすると、
 成果フォルダーに `dem_merged.tif` を追加します。既定はオフです。GeoTIFF以外の入力から
