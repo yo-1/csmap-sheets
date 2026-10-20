@@ -22,7 +22,7 @@
 
 - `python tools/check_markdown_links.py`: Markdownの相対パス・main向け自リポジトリURL・見出しを作業ツリーで解決。外部全URLの稼働検査ではない。
 - tools/tests: 欠落文書・見出しで不合格になるリンク検査と既存パッケージ検査の異常系。
-- 既存preflight/unit/gdalに加えQGIS 3.44コンテナで既存回帰を実行。スキップを成功に含めない。
+- 既存preflight/unit/gdalに加えUbuntuのQGIS 3.44 LTR環境で既存回帰を実行。スキップを成功に含めない。
 - tools/check_qgis_package.py: 実ZIPのimport、classFactory、GUI/Processing登録、実ダイアログ、JSON保存欄、解除。両アンカーと標準ヘルプを実クリックし、QDesktopServicesのHTTPSハンドラでURLを捕捉する（外部ブラウザは起動しない）。
 - 同じZIPの画面を幅1400・1000でPNG保存し、Actions artifact `csmap-sheets-help-screenshots` へ添付。
 - オンライン正本はマージ後のmainを指す。レビュー中はREADMEの相対リンクを使う。新文書がまだmainにないことと公開版反映を混同しない。
