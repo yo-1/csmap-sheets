@@ -29,7 +29,27 @@
 
 ## 実行結果
 
-作業環境はexecutor構成取得エラーで2回起動失敗。ローカル成功は主張しない。Actionsの結果・件数・証跡をPRとここへ追記する。
+作業環境はexecutor構成取得エラーで2回起動失敗。ローカル成功は主張しない。
+[Actions 39459353128](https://github.com/yo-1/csmap-sheets/actions/runs/39459353128)、対象head `72b1d06d461b0e1329f96a1d878f1ef9a36d651d`（PRマージ検査ref）で全4ジョブ成功。
+
+| 検査 | 結果 |
+|---|---|
+| unit（Python 3.12.15、GDAL/QGISなし） | 190件中167成功・23スキップ・失敗0 |
+| gdal（GDAL 3.8.4、NumPy 1.26.4、SciPy 1.11.4） | 190件中180成功・10スキップ・失敗0 |
+| qgis（QGIS 3.44.15、GDAL 3.8.4） | 190件中188成功・2スキップ・失敗0 |
+| tools/tests | 4成功・スキップ0・失敗0 |
+| Markdown | 14ファイル・64リポジトリリンク成功 |
+| preflight | Flake8・Bandit・detect-secrets・ZIP構造／構文／CRC／metadata成功 |
+| 実ZIPの起動 | import、classFactory、GUI/Processing登録、実ダイアログ、JSON保存欄、unload成功 |
+| ヘルプ操作 | 利用手順書・推奨設定・標準Helpを実クリックし3遷移先URL一致 |
+| スクリーンショット | dialog-wide.png（幅1400）、dialog-narrow.png（幅1000）を同じZIPから生成 |
+
+QGISの2スキップはPDAL未導入の点群実行、WEBPドライバ存在環境でのドライバ欠如専用経路。成功数には含めない。画面はLinux offscreen描画で、Windows・実モニターのDPI・ネイティブブラウザの検査ではない。
+
+[スクリーンショットZIP](https://github.com/yo-1/csmap-sheets/actions/runs/39459353128/artifacts/12281469541)をPRにも添付。自動保存・リンク実クリックを確認し、目視比較済みとは扱わない。
+[検査済みパッケージ](https://github.com/yo-1/csmap-sheets/actions/runs/39459353128/artifacts/12282315879)は31ファイル、metadata 0.12.4、内部ZIP SHA-256 `165eeaea3777fed1c00f688ff62771b9caf11bc9243f0ce0471fde2e3ca7f600`。既存Release資産の差替えには使っていない。
+
+初回[39459050904](https://github.com/yo-1/csmap-sheets/actions/runs/39459050904)は存在しないDockerタグの取得でQGIS起動前に失敗。QGIS公式Ubuntu LTRパッケージへ修正後、3.44系を明示検査して全ジョブ成功。
 
 ## 未確認
 
