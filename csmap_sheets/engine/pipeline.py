@@ -14,7 +14,12 @@ import sys
 import traceback
 
 import numpy as np
-from .filters import gaussian_filter, minimum_filter, BACKEND
+from .filters import (
+    gaussian_filter,
+    gaussian_center_fill,
+    minimum_filter,
+    BACKEND,
+)
 from .map_sheets import dimensions, intersecting_sheets
 from .progress import report, check_cancel, CancelledError
 from .color_fme import (
@@ -112,6 +117,24 @@ def color_settings(settings=None):
 
 SLOPE_ALGORITHMS = ("horn", "central_difference")
 SLOPE_ALGORITHM_NAMES = {"horn": "Horn法", "central_difference": "中央差分法"}
+NODATA_EDGE_MODES = ("safe_mask", "pss_approximation")
+NODATA_EDGE_MODE_NAMES = {
+    "safe_mask": "標準（欠測の影響範囲を透過）",
+    "pss_approximation": "PSS互換を目指す（計算用補完）",
+}
+
+
+def profile_nodata_edge_mode(saved, chosen):
+    """Resolve external-profile mode independently of QGIS; validate later."""
+    if "nodata_edge_mode" in saved:
+        return saved["nodata_edge_mode"], None
+    warning = None
+    if chosen != "safe_mask":
+        warning = (
+            "この設定プロファイルには欠測・端部の処理方式（nodata_edge_mode）がないため、"
+            "標準（safe_mask）として読みます。画面のPSS近似の選択は適用しません。"
+        )
+    return "safe_mask", warning
 
 
 def missing_slope_algorithm_notice(saved, chosen):
@@ -128,7 +151,22 @@ def missing_slope_algorithm_notice(saved, chosen):
     )
 
 
-def slope_gradients(raw, cell, slope_algorithm="horn"):
+def _neighbour_with_centre(raw, valid, dy, dx):
+    """Return a shifted neighbour.
+
+    Edges are extended and NoData neighbours are replaced by the centre.
+    """
+    h, w = raw.shape
+    padded_raw = np.pad(raw, 1, mode="edge")
+    padded_valid = np.pad(valid, 1, mode="edge")
+    neighbour = padded_raw[1 + dy: 1 + dy + h, 1 + dx: 1 + dx + w]
+    neighbour_valid = padded_valid[1 + dy: 1 + dy + h, 1 + dx: 1 + dx + w]
+    return np.where(neighbour_valid, neighbour, raw)
+
+
+def slope_gradients(
+    raw, cell, slope_algorithm="horn", valid=None, nodata_edge_mode="safe_mask"
+):
     """Return (dz/dx, dz/dy) in the same units as raw/cell for this method.
 
     Both methods need only a 1-cell halo (callers already supply
@@ -147,6 +185,29 @@ def slope_gradients(raw, cell, slope_algorithm="horn"):
     """
     if slope_algorithm not in SLOPE_ALGORITHMS:
         raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
+    if nodata_edge_mode not in NODATA_EDGE_MODES:
+        raise ValueError(
+            f"nodata_edge_mode must be one of {NODATA_EDGE_MODES}"
+        )
+    if nodata_edge_mode == "pss_approximation":
+        if valid is None:
+            raise ValueError("valid is required for pss_approximation")
+        valid = np.asarray(valid, dtype=bool)
+        if valid.shape != raw.shape:
+            raise ValueError("raw and valid must have the same shape")
+        n = _neighbour_with_centre(raw, valid, -1, 0)
+        s = _neighbour_with_centre(raw, valid, 1, 0)
+        w = _neighbour_with_centre(raw, valid, 0, -1)
+        e = _neighbour_with_centre(raw, valid, 0, 1)
+        if slope_algorithm == "central_difference":
+            return (e - w) / (2 * cell), (s - n) / (2 * cell)
+        nw = _neighbour_with_centre(raw, valid, -1, -1)
+        ne = _neighbour_with_centre(raw, valid, -1, 1)
+        sw = _neighbour_with_centre(raw, valid, 1, -1)
+        se = _neighbour_with_centre(raw, valid, 1, 1)
+        dx = ((ne + 2 * e + se) - (nw + 2 * w + sw)) / (8 * cell)
+        dy = ((sw + 2 * s + se) - (nw + 2 * n + ne)) / (8 * cell)
+        return dx, dy
     if slope_algorithm == "central_difference":
         dx = (np.roll(raw, -1, 1) - np.roll(raw, 1, 1)) / (2 * cell)
         dy = (np.roll(raw, -1, 0) - np.roll(raw, 1, 0)) / (2 * cell)
@@ -244,12 +305,16 @@ def relief(
     fme=None,
     slope_algorithm="horn",
     sigma_px=None,
+    nodata_edge_mode="safe_mask",
 ):
     """Return RGBA, slope degrees and negative-Laplacian proxy (1/m).
 
-    All samples touching a missing value within the full processing support
-    are transparent. Callers must supply ceil(4*sigma_m/cell)+1 halo cells
-    (>=1 cell, which both supported slope_algorithm values need).
+    In the default ``safe_mask`` mode, all samples touching a missing value
+    within the full processing support are transparent. ``pss_approximation``
+    uses calculation-only centre substitution and nearest-edge extension while
+    keeping missing centre cells transparent. Callers must supply
+    ceil(4*sigma_m/cell)+1 halo cells (>=1 cell, which both supported
+    slope_algorithm values need).
     ``sigma_px`` (v0.12.0) gives sigma directly in grid pixels and then takes
     precedence over ``sigma_m``; the halo is ceil(4*sigma_px)+1 in that case.
     """
@@ -260,6 +325,10 @@ def relief(
         raise ValueError("render_mode must be independent_v040 or fme_manual")
     if slope_algorithm not in SLOPE_ALGORITHMS:
         raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
+    if nodata_edge_mode not in NODATA_EDGE_MODES:
+        raise ValueError(
+            f"nodata_edge_mode must be one of {NODATA_EDGE_MODES}"
+        )
     tone = color_settings(color) if render_mode == "independent_v040" else None
     if sigma_px is None:
         radius = math.ceil(4 * sigma_m / cell)
@@ -270,28 +339,41 @@ def relief(
     halo = radius + 1
     valid = valid & np.isfinite(z)
     raw = np.where(valid, z, 0).astype(np.float64)
-    smooth = (
-        gaussian_filter(
-            raw, sigma=sigma_grid, radius=radius, mode="constant", cval=0
+    if nodata_edge_mode == "pss_approximation":
+        smooth = gaussian_center_fill(raw, valid, sigma_grid, radius)
+    else:
+        smooth = (
+            gaussian_filter(
+                raw, sigma=sigma_grid, radius=radius, mode="constant", cval=0
+            )
+            if sigma_grid > 0
+            else raw.copy()
         )
-        if sigma_grid > 0
-        else raw.copy()
+    dx, dy = slope_gradients(
+        raw, cell, slope_algorithm, valid, nodata_edge_mode
     )
-    dx, dy = slope_gradients(raw, cell, slope_algorithm)
     slope = np.degrees(np.arctan(np.hypot(dx, dy)))
-    curvature = (
-        -(
-            np.roll(smooth, -1, 1)
-            + np.roll(smooth, 1, 1)
-            + np.roll(smooth, -1, 0)
-            + np.roll(smooth, 1, 0)
-            - 4 * smooth
+    if nodata_edge_mode == "pss_approximation":
+        east = _neighbour_with_centre(smooth, valid, 0, 1)
+        west = _neighbour_with_centre(smooth, valid, 0, -1)
+        north = _neighbour_with_centre(smooth, valid, -1, 0)
+        south = _neighbour_with_centre(smooth, valid, 1, 0)
+        curvature = -(east + west + north + south - 4 * smooth) / cell**2
+        safe = valid
+    else:
+        curvature = (
+            -(
+                np.roll(smooth, -1, 1)
+                + np.roll(smooth, 1, 1)
+                + np.roll(smooth, -1, 0)
+                + np.roll(smooth, 1, 0)
+                - 4 * smooth
+            )
+            / cell**2
         )
-        / cell**2
-    )
-    safe = minimum_filter(
-        valid.astype(np.uint8), size=2 * halo + 1, mode="constant", cval=0
-    ).astype(bool)
+        safe = minimum_filter(
+            valid.astype(np.uint8), size=2 * halo + 1, mode="constant", cval=0
+        ).astype(bool)
     if render_mode == "fme_manual":
         rgb = render_fme(
             raw,
@@ -368,21 +450,21 @@ def mosaic_message(c, input_report):
     return f"Mosaic: {count} DEM files"
 
 
-def validate_config(c, base_dir, feedback=None):
-    base_dir = Path(base_dir)
-    provided = set(c)
-    # NOTE: this bare default is independent_v040 (legacy)'s own value,
-    # matching pre-FME v0.4
-    # behaviour exactly. It was previously left at 0.03 (the FME-mode figure)
-    # here, so a config
-    # or external profile that picked independent_v040 while omitting
-    # curvature_limit would
-    # silently get 0.03 instead of the documented v0.4-compatible 0.05 (found
-    # by comparison
-    # against a parallel implementation, 2026-09-24; the QGIS UI itself always
-    # forces 0.05 for
-    # its built-in legacy presets, so this only bit bare configs/external
-    # profiles).
+PROFILE_EXCLUDED = frozenset(
+    {
+        "inputs",
+        "output_dir",
+        "target_crs",
+        "plane_zone",
+        "input_type",
+        "confirm_elevation_metres",
+    }
+)
+PROFILE_SCHEMA = "csmap-settings-profile-v5"
+
+
+def configuration_defaults():
+    """Fresh engine defaults; also the authoritative profile key allowlist."""
     defaults = dict(
         sigma_m=3.0,
         curvature_limit=0.05,
@@ -413,6 +495,9 @@ def validate_config(c, base_dir, feedback=None):
         # 式。1セルノイズに対して中央差分法より頑健）。中央差分法は
         # v0.9.4以前の挙動（2点差分）との比較・互換のために選択可能とする。
         slope_algorithm="horn",
+        # 欠測・端部の処理方式。safe_maskが従来どおりの既定で、
+        # pss_approximationは明示選択時だけ使う。
+        nodata_edge_mode="safe_mask",
         # v0.12.0: Gaussian σの指定方式（ユーザー承認の改訂依頼、2026-10-03）。
         # 'm'＝地上距離（sigma_mを使う。従来どおり・既定）、'px'＝計算格子の
         # 画素数（sigma_pxを使う）。方式ごとの値を別々に保持し、方式を切り替えても
@@ -422,6 +507,67 @@ def validate_config(c, base_dir, feedback=None):
     )
     defaults.update(XYZ_DEFAULTS)
     defaults.update(INPUT_DEFAULTS)
+    return defaults
+
+
+def merge_settings_profile(data, current):
+    """Merge known settings, including engine-only limits.
+
+    Runtime paths and other protected values are never taken from a profile.
+    """
+    if not isinstance(data, dict):
+        raise ValueError("設定プロファイルはJSONオブジェクトで指定してください。")
+    saved = data.get("settings", data)
+    if not isinstance(saved, dict):
+        raise ValueError(
+            "設定プロファイルのsettingsはJSONオブジェクトで指定してください。"
+        )
+    allowed = (
+        set(configuration_defaults())
+        | {"cell_size", "color_model"}
+        | PROFILE_EXCLUDED
+    )
+    unknown = set(saved) - allowed
+    if unknown:
+        raise ValueError(
+            "設定プロファイルに不明な項目があります: " + repr(sorted(unknown))
+        )
+    merged = dict(current)
+    merged.update(
+        {
+            k: v
+            for k, v in saved.items()
+            if k not in PROFILE_EXCLUDED and k != "color_model"
+        }
+    )
+    return merged, saved
+
+
+def settings_profile(settings):
+    return {
+        "schema": PROFILE_SCHEMA,
+        "settings": {
+            k: v for k, v in settings.items() if k not in PROFILE_EXCLUDED
+        },
+    }
+
+
+def validate_config(c, base_dir, feedback=None):
+    base_dir = Path(base_dir)
+    provided = set(c)
+    # NOTE: this bare default is independent_v040 (legacy)'s own value,
+    # matching pre-FME v0.4
+    # behaviour exactly. It was previously left at 0.03 (the FME-mode figure)
+    # here, so a config
+    # or external profile that picked independent_v040 while omitting
+    # curvature_limit would
+    # silently get 0.03 instead of the documented v0.4-compatible 0.05 (found
+    # by comparison
+    # against a parallel implementation, 2026-09-24; the QGIS UI itself always
+    # forces 0.05 for
+    # its built-in legacy presets, so this only bit bare configs/external
+    # profiles).
+    defaults = configuration_defaults()
     unknown = (
         set(c)
         - set(defaults)
@@ -513,6 +659,10 @@ def validate_config(c, base_dir, feedback=None):
         raise ValueError("slope_max must be <= 90 degrees")
     if c["slope_algorithm"] not in SLOPE_ALGORITHMS:
         raise ValueError(f"slope_algorithm must be one of {SLOPE_ALGORITHMS}")
+    if c["nodata_edge_mode"] not in NODATA_EDGE_MODES:
+        raise ValueError(
+            f"nodata_edge_mode must be one of {NODATA_EDGE_MODES}"
+        )
     if c.get("elevation_range_auto"):
         margin = c.get("elevation_range_margin", 50.0)
         if not math.isfinite(margin) or margin < 0:
@@ -535,7 +685,7 @@ def validate_config(c, base_dir, feedback=None):
                 "elevation_range must contain two increasing finite values"
             )
     for key in ("block_size", "max_pixels", "max_sheets", "max_sheet_pixels"):
-        if not isinstance(c[key], int) or c[key] <= 0:
+        if type(c[key]) is not int or c[key] <= 0:
             raise ValueError(f"{key} must be a positive integer")
     if not 64 <= c["block_size"] <= 2048:
         raise ValueError("block_size:64..2048")
@@ -837,6 +987,7 @@ def make_relief(dem_path, output_path, c, gdal, feedback=None):
                 c.get("fme"),
                 c.get("slope_algorithm", "horn"),
                 sigma_px if c.get("sigma_unit", "m") == "px" else None,
+                c.get("nodata_edge_mode", "safe_mask"),
             )
             tile = rgba[y - y0: y - y0 + bh, x - x0: x - x0 + bw]
             valid_count += int(np.count_nonzero(tile[:, :, 3]))
@@ -1095,6 +1246,18 @@ def rendering_settings(c):
             "oothed elevation (degrees)",
         }[slope_algorithm],
         "slope_algorithm": slope_algorithm,
+        "nodata_edge_mode": c.get("nodata_edge_mode", "safe_mask"),
+        "nodata_edge_handling": {
+            "safe_mask": (
+                "transparent where the full processing support touches NoData "
+                "or exterior"
+            ),
+            "pss_approximation": (
+                "calculation-only nearest-edge extension and centre-value "
+                "substitution for missing neighbours; missing centre remains "
+                "transparent"
+            ),
+        }[c.get("nodata_edge_mode", "safe_mask")],
         # v0.12.0: smoothing_sigma_m is the sigma in metres actually used
         # (equal to the
         # setting in 'm' mode, as before); "smoothing" keeps the setting and
@@ -1146,7 +1309,7 @@ def detect_elevation_range(raster_ds, margin, feedback=None):
     return [lo, hi], [dmin, dmax]
 
 
-def run(c, feedback=None):
+def run(c, feedback=None, profile_warnings=()):
     from osgeo import gdal, osr, ogr
 
     check_cancel(feedback)
@@ -1176,6 +1339,8 @@ def run(c, feedback=None):
         gdal=gdal.VersionInfo("RELEASE_NAME"),
         overlap_priority="later valid input wins",
     )
+    if profile_warnings:
+        manifest["profile_warnings"] = list(profile_warnings)
 
     def save():
         (out / "run.json").write_text(
