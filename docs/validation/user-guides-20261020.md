@@ -3,8 +3,9 @@
 ## 基準・範囲
 
 - 基準main: `12447d3f7cf8a04bb1e63d798ddc189f5976c889`（PR #44後）。
-- 作業ブランチ: `docs/user-guides-help`、版は0.12.3開発版のまま。
-- 公開版0.12.2、Release・タグ・QGIS登録は変更しない。mainへマージしない。
+- 最新main追従: `92b8c28f342dee698a87d917632558caac30915e`（PR #49/#50後）。0.12.4のMERGED_DEM・既定オフと関連試験、公開情報を保持して競合解消。
+- 作業ブランチ: `docs/user-guides-help`、版は最新mainと同じ0.12.4。
+- 既存QGIS公式版0.12.2・GitHub Release v0.12.4、Release・タグ・QGIS登録は変更しない。mainへマージしない。
 - engine、パラメータ定義・既定値、prepareAlgorithm/processAlgorithmは変更しない。
 - 既存Processingヘルプを残し、先頭に利用手順書・推奨設定リンク、標準ヘルプボタンに利用手順書URLを設定。ツールバー・ツールボックス起動に共通。
 - metadataのhomepage/repository/trackerはGitHubの既存URLを維持。独立ドキュメント項目は元からないため、aboutで案内しProcessingのhelpUrlを利用。非標準キーは追加しない。

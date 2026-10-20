@@ -6,12 +6,12 @@
 
 # CS Map Sheets — QGISプラグイン
 
-公開版0.12.2／mainは0.12.3開発版／QGIS 3.44.x向け／2026-10-20
+QGIS公式版0.12.2／GitHub版・mainは0.12.4／QGIS 3.44.x向け／2026-10-20
 
 基本操作は[利用手順書](https://github.com/yo-1/csmap-sheets/blob/main/docs/user-guide.md)、
 適用値と検証区分は[推奨設定](https://github.com/yo-1/csmap-sheets/blob/main/docs/recommended-settings.md)、
 計算根拠は[技術解説](https://github.com/yo-1/csmap-sheets/blob/main/docs/technical-guide.md)を参照してください。
-本文には過去の変更経緯も含みます。0.12.3のUI改善は公開版0.12.2には含まれません。
+本文には過去の変更経緯も含みます。0.12.3のUI改善はGitHub版0.12.4に含まれ、QGIS公式版0.12.2には含まれません。
 
 Copyright (C) 2026 Yoichi Wada. GNU GPL v3.0 only.
 
@@ -64,7 +64,7 @@ QGISの画面から複数DEMを選び、次の処理を一括実行します。
 2. 曲率・傾斜・標高から「独自方式 v0.4互換」または「FMEマニュアル方式」の画像を作成。
 3. 方式ごとに分離された色設定を全域共通で適用。
 4. 国土基本図図郭でGeoTIFFとワールドファイルを出力。
-5. 図郭索引GeoPackageを作り、全域CS画像とともにQGISへ読み込む（任意）。0.12.3開発版では図郭を塗りなし・枠線のみで表示します。
+5. 図郭索引GeoPackageを作り、全域CS画像とともにQGISへ読み込む（任意）。0.12.3以降（GitHub版0.12.4を含む）は図郭を塗りなし・枠線のみで表示します。
 
 ツールバーとラスタメニューから起動できます。プロセッシングツールボックスにも追加されます。
 
@@ -83,7 +83,7 @@ FME資料の曲率表記は通常−10～+10（10m DEMは−5～+5）です。�
 
 ## インストール
 
-1. プラグインのZIP（例：`csmap_sheets-v0.12.2.zip`）を、GitHubの「Releases」から入手します。ZIPは解凍しません。
+1. プラグインのZIP（例：`csmap_sheets-v0.12.4.zip`）を、GitHubの「Releases」から入手します。ZIPは解凍しません。
 2. QGISで「プラグイン」→「プラグインの管理とインストール」を開きます。
 3. 「ZIPからインストール」でこのZIPを選択し、インストールします。
 4. インストール済み一覧で「CS Map Sheets」を有効にします。
@@ -91,7 +91,7 @@ FME資料の曲率表記は通常−10～+10（10m DEMは−5～+5）です。�
 
 ツール名は「DEMマージ・CS色調調整・国土基本図図郭・XYZ出力」です。ラスタメニューの「CS Map Sheets」やツールバーのアイコンからも開けます。
 
-QGIS公式の公開版は0.12.2（実験的プラグイン）です。mainの0.12.3は開発版です。公式管理画面から導入する場合は実験的プラグインの表示を有効にし、版を確認してください。
+QGIS公式は0.12.2（実験的プラグイン）、GitHub版は0.12.4です。配布経路と版を確認してください。
 
 ## 最初の実行
 
@@ -212,7 +212,7 @@ RGBストレッチは「長野県実績値」が初期値です（FMEマニュ�
 |sheets/図郭番号.tif|図郭別RGBA GeoTIFF|
 |sheets/図郭番号.tfw|ワールドファイル。左上画素の中心座標を記録|
 |sheet_index.gpkg|出力済み図郭索引|
-|sheet_index.qml|0.12.3開発版：図郭索引のQGISスタイル（塗りなし・枠線のみ）。GPKGと同じフォルダーで保管|
+|sheet_index.qml|0.12.3以降：図郭索引のQGISスタイル（塗りなし・枠線のみ）。GPKGと同じフォルダーで保管|
 |run.json|設定、入力順、ライブラリ版、計算バックエンド、成否|
 |source_mosaic.vrt|入力変換成果への参照。関連ファイルを移動すると参照切れになる|
 
@@ -244,6 +244,24 @@ unittest.TextTestRunner(verbosity=2).run(
 ```
 
 GDALが利用可能なら、tests/test_pipeline.pyの結合テストで人工DEM2枚から図郭GeoTIFF生成までを実行します。QGISのGUI操作や実DEMによる位置確認を代替するものではありません。
+
+## マージ済み標高DEMの保存（v0.12.4）
+
+出力設定の「マージ・格子整合済みの標高DEMをGeoTIFFでも保存する」をオンにすると、
+成果フォルダーに `dem_merged.tif` を追加します。既定はオフです。GeoTIFF以外の入力から
+変換したDEMにも、GeoTIFF等の標高ラスタ入力にも適用します。
+
+- CS計算用の `projected_dem.vrt` から、単バンドの標高値を保存します。
+- 出力CRS・セル幅・NoData・格子を引き継ぎます。保存時には追加の再投影・再サンプリングを行いません。
+- 平滑化・傾斜・曲率計算前の標高です。色付きの `cs_relief_merged.tif` とは別の成果です。
+- 範囲は格子整合済みの入力DEM全域です。CS画像は図郭まで広がるため、両者の画像幅・高さが同じとは限りません。位置合わせにはCRS・座標変換を使います。
+- 大容量になり得るため、追加のディスク空き容量を確保してください。BigTIFFは必要に応じて使用します。
+- `run.json` の `settings.merged_dem_enabled` と `dem_merged_geotiff` に有効／無効と保存先を記録します。
+- Processingの出力 `DEM_MERGED_GEOTIFF` から取得できます。標高DEMのQGISへの自動追加は行いません。
+- この設定を含む新しい保存プロファイルは、未対応の旧版では不明な設定として拒否されます。旧プロファイルの読込は引き続き可能です。
+
+図郭別DEMの恒久保存はこの追加機能の対象外です。図郭DEM作成は別プロジェクトの
+DEM Map Sheetsで扱います。CS Map Sheetsの図郭計算用DEMは従来どおり処理後に削除します。
 
 ## 参照・ライセンス
 

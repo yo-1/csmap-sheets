@@ -128,7 +128,7 @@ PARAMETER_SECTIONS = {
         "XYZ_MAX",
         "XYZ_LIMIT",
     ),
-    "出力": ("COMPRESSION", "MERGED_GEOTIFF", "LOAD", "OUTPUT"),
+    "出力": ("COMPRESSION", "MERGED_GEOTIFF", "MERGED_DEM", "LOAD", "OUTPUT"),
 }
 # 区分名と重なる既存の接頭辞は外す（例：「テキスト：区切り文字」→「【テキスト】区切り文字」）
 SECTION_REDUNDANT_PREFIXES = {
@@ -804,6 +804,13 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         )
         self.addParameter(
             QgsProcessingParameterBoolean(
+                "MERGED_DEM",
+                "マージ・格子整合済みの標高DEMをGeoTIFFでも保存する（追加容量が必要）",
+                False,
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterBoolean(
                 "LOAD", "終了後に全域CS画像と図郭索引を読み込む", True
             )
         )
@@ -818,6 +825,11 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         self.addOutput(
             QgsProcessingOutputRasterLayer(
                 "CS_MERGED_GEOTIFF", "全域CS方式画像（結合GeoTIFF）"
+            )
+        )
+        self.addOutput(
+            QgsProcessingOutputRasterLayer(
+                "DEM_MERGED_GEOTIFF", "マージ済み標高DEM（GeoTIFF）"
             )
         )
         self.addOutput(
@@ -1305,6 +1317,9 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             merged_geotiff_enabled=self.parameterAsBool(
                 parameters, "MERGED_GEOTIFF", context
             ),
+            merged_dem_enabled=self.parameterAsBool(
+                parameters, "MERGED_DEM", context
+            ),
         )
         if render_mode == "independent_v040" and legacy_preset != 1:
             c.update(
@@ -1547,6 +1562,11 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         outputs["CS_MERGED_GEOTIFF"] = (
             str(self.result_dir / "cs_relief_merged.tif")
             if self.settings["merged_geotiff_enabled"]
+            else ""
+        )
+        outputs["DEM_MERGED_GEOTIFF"] = (
+            str(self.result_dir / "dem_merged.tif")
+            if self.settings["merged_dem_enabled"]
             else ""
         )
         if self.load_outputs and context.project() is not None:

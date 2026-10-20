@@ -11,7 +11,8 @@
 
 QGIS公式で公開済みの実験的プラグインは [0.12.2](https://plugins.qgis.org/plugins/csmap_sheets/version/0.12.2/) です。
 登録用ZIPとSHA-256は [GitHub Release v0.12.2](https://github.com/yo-1/csmap-sheets/releases/tag/v0.12.2) から取得できます。
-mainは0.12.3の開発版です。公開版・検証状況・残作業は [公開整合・監査記録](docs/validation/project-audit-20261017.md) を参照してください。
+GitHub版の最新版は **v0.12.4** です。[Release・導入用ZIP・SHA-256](https://github.com/yo-1/csmap-sheets/releases/tag/v0.12.4) から取得できます。マージ・格子整合済みの標高DEMを `dem_merged.tif` として任意保存できます（既定オフ）。
+QGIS公式リポジトリへのv0.12.4反映は別途確認します。過去の公開整合記録は [2026-10-17監査](docs/validation/project-audit-20261017.md)、今回の変更と検証は [v0.12.4記録](docs/validation/merged-dem-0.12.4.md) を参照してください。
 
 本体は [`csmap_sheets/`](csmap_sheets/) フォルダーです。QGISの「ZIPからインストール」機能で
 導入する場合は、このフォルダーをZIP化して指定してください（プラグインIDは `csmap_sheets`）。
@@ -22,7 +23,7 @@ mainは0.12.3の開発版です。公開版・検証状況・残作業は [公�
 - [推奨設定](docs/recommended-settings.md) — 実装上の既定値・暫定推奨・比較検証済みの範囲
 - [技術解説](docs/technical-guide.md) — 傾斜・曲率・配色・欠測処理と再現条件
 
-Markdownが正本です。公開版0.12.2とmainの0.12.3開発版の差は各書に明記しています。
+Markdownが正本です。公開版0.12.2とGitHub版0.12.4の差は各書に明記しています。
 画面内の手順書リンクは開発版で追加した機能です。
 
 詳細な機能説明・入力形式・設定項目・既知の制約は以下を参照してください。
