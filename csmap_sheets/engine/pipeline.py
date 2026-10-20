@@ -406,6 +406,8 @@ def validate_config(c, base_dir, feedback=None):
         # 2026-09-30。VRTは個々の図郭タイルへの参照のため、成果物を
         # 単独で移動・配布する用途にはGeoTIFFの方が扱いやすい）。
         merged_geotiff_enabled=True,
+        # Optional elevation DEM; retain the existing VRT-only default.
+        merged_dem_enabled=False,
         # v0.10.0: 傾斜計算アルゴリズムの選択（ユーザー要望、2026-10-02）。
         # 既定はHorn法（3x3加重、ArcGIS/gdaldem等の標準的な傾斜算出法と同じ
         # 式。1セルノイズに対して中央差分法より頑健）。中央差分法は
@@ -492,6 +494,8 @@ def validate_config(c, base_dir, feedback=None):
         )
     if not isinstance(c["merged_geotiff_enabled"], bool):
         raise ValueError("merged_geotiff_enabled must be boolean")
+    if not isinstance(c["merged_dem_enabled"], bool):
+        raise ValueError("merged_dem_enabled must be boolean")
     for key in ("cell_size", "curvature_limit", "slope_max"):
         if not math.isfinite(c[key]) or c[key] <= 0:
             raise ValueError(f"{key} must be finite and positive")
@@ -1259,6 +1263,23 @@ def run(c, feedback=None):
         )
         projected.FlushCache()
         projected = vrt = None
+        manifest["dem_merged_geotiff"] = None
+        if c.get("merged_dem_enabled", False):
+            from .dem_export import export_merged_dem
+
+            manifest["stage"] = "merged_dem_geotiff"
+            save()
+            export_merged_dem(
+                projected_path, out / "dem_merged.tif", gdal, feedback
+            )
+            manifest["dem_merged_geotiff"] = "dem_merged.tif"
+            manifest["dem_export"] = {
+                "source": "projected_dem.vrt",
+                "data": "single-band elevation in metres, before smoothing",
+                "resampling_on_export": "none",
+                "extent": "aligned input mosaic (not padded CS sheet extent)",
+            }
+            save()
         manifest["stage"] = "sheet_streaming"
         save()
         cs_mosaic, manifest["sheets"], manifest["valid_relief_pixels"] = (
