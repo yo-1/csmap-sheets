@@ -8,6 +8,7 @@ yo-1/japan-plane-rectangular-cs-zones の data/municipality_zones.csv。告示�
 使い方:
   python tools/crosscheck_zone_table.py <統計局CSVのフォルダー> <municipality_zones.csv>
 """
+
 import csv
 import re
 import sys
@@ -20,8 +21,8 @@ import build_jpr_zone_table as table  # noqa: E402
 
 def zones_by_code(folder):
     zones, names = defaultdict(set), {}
-    for path in sorted(Path(folder).glob('*.csv')):
-        with open(path, encoding='cp932', newline='') as f:
+    for path in sorted(Path(folder).glob("*.csv")):
+        with open(path, encoding="cp932", newline="") as f:
             reader = csv.reader(f)
             next(reader)
             for row in reader:
@@ -34,9 +35,11 @@ def zones_by_code(folder):
 
 def reference_zones(path):
     zones = defaultdict(set)
-    with open(path, encoding='utf-8', newline='') as f:
+    with open(path, encoding="utf-8", newline="") as f:
         for row in csv.DictReader(f):
-            zones[row['code']].update(int(z) for z in re.split('[;|]', row['zones']) if z)
+            zones[row["code"]].update(
+                int(z) for z in re.split("[;|]", row["zones"]) if z
+            )
     return zones
 
 
@@ -45,18 +48,24 @@ def main():
     reference = reference_zones(sys.argv[2])
     compared = differ = 0
     for code in sorted(mine):
-        if code.endswith('999'):
+        if code.endswith("999"):
             continue
         if code not in reference:
-            print('参照側になし', code, names[code])
+            print("参照側になし", code, names[code])
             continue
         compared += 1
         if mine[code] != reference[code]:
             differ += 1
-            print('食い違い', code, names[code], sorted(mine[code]), sorted(reference[code]))
-    print(f'比較 {compared} 件、食い違い {differ} 件')
+            print(
+                "食い違い",
+                code,
+                names[code],
+                sorted(mine[code]),
+                sorted(reference[code]),
+            )
+    print(f"比較 {compared} 件、食い違い {differ} 件")
     return 1 if differ else 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

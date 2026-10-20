@@ -18,12 +18,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install inspection tools
+        run: python -m pip install flake8==7.4.1 bandit==1.9.4 detect-secrets==1.5.0
+      - name: Code quality
+        run: flake8 csmap_sheets tools
+      - name: Security
+        run: bandit -r csmap_sheets -x csmap_sheets/tests
+      - name: Secrets
+        run: |
+          detect-secrets scan csmap_sheets tools > /tmp/secrets.json
+          python -c "import json; d=json.load(open('/tmp/secrets.json')); assert not d['results'], 'Potential secrets detected'"
+      - name: Validate submission package
+        run: python tools/check_plugin_package.py /tmp/csmap_sheets.zip
+      - name: Test submission checks
+        run: python -m unittest discover -s tools/tests -v
+      - name: Inspect the actual submission ZIP
+        run: python tools/check_submission.py /tmp/csmap_sheets.zip /tmp/submission-checks
+      - name: Upload validated submission ZIP
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: csmap-sheets-submission
+          path: /tmp/csmap_sheets.zip
+          if-no-files-found: error
+
   unit:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.12'
       - name: Install dependencies
@@ -37,7 +68,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Install GDAL, NumPy and SciPy (Ubuntu packages)
         run: |
           sudo apt-get update

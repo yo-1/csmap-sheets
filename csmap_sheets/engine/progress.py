@@ -4,7 +4,9 @@ class CancelledError(RuntimeError):
 
 def check_cancel(feedback):
     if feedback is not None and feedback.isCanceled():
-        raise CancelledError('処理をキャンセルしました。部分成果は未完了です。')
+        raise CancelledError(
+            "処理をキャンセルしました。部分成果は未完了です。"
+        )
 
 
 def report(feedback, message, percent=None):
@@ -22,6 +24,7 @@ def gdal_progress(feedback, start=0, end=25):
         if feedback is not None:
             if feedback.isCanceled():
                 return 0
-            feedback.setProgress(start+(end-start)*fraction)
+            feedback.setProgress(start + (end - start) * fraction)
         return 1
+
     return callback

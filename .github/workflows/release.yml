@@ -1,0 +1,66 @@
+name: release-package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to package
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-package-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install package inspection tools
+        run: python -m pip install flake8==7.4.1 bandit==1.9.4 detect-secrets==1.5.0
+      - name: Validate tag and build installable ZIP
+        run: |
+          python - <<'PY'
+          import configparser
+          import os
+          import re
+          from pathlib import Path
+          from tools.check_plugin_package import build
+          config = configparser.ConfigParser(interpolation=None)
+          config.read('csmap_sheets/metadata.txt', encoding='utf-8')
+          version = config['general']['version']
+          tag = os.environ['RELEASE_TAG']
+          if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag) or tag != 'v' + version:
+              raise ValueError('Release tag and plugin metadata version mismatch')
+          build(Path('/tmp') / ('csmap_sheets-' + tag + '.zip'))
+          PY
+      - name: Inspect actual release ZIP
+        run: python tools/check_submission.py "/tmp/csmap_sheets-${RELEASE_TAG}.zip" /tmp/release-checks
+      - name: Generate checksum and upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          package = Path('/tmp') / ('csmap_sheets-' + os.environ['RELEASE_TAG'] + '.zip')
+          checksum = hashlib.sha256(package.read_bytes()).hexdigest()
+          Path('/tmp/SHA256SUMS.txt').write_text(checksum + '  ' + package.name + '\n')
+          print(checksum, package.name)
+          PY
+          gh release upload "$RELEASE_TAG" "/tmp/csmap_sheets-${RELEASE_TAG}.zip" /tmp/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY"
