@@ -240,6 +240,24 @@ unittest.TextTestRunner(verbosity=2).run(
 
 GDALが利用可能なら、tests/test_pipeline.pyの結合テストで人工DEM2枚から図郭GeoTIFF生成までを実行します。QGISのGUI操作や実DEMによる位置確認を代替するものではありません。
 
+## マージ済み標高DEMの保存（v0.12.4）
+
+出力設定の「マージ・格子整合済みの標高DEMをGeoTIFFでも保存する」をオンにすると、
+成果フォルダーに `dem_merged.tif` を追加します。既定はオフです。GeoTIFF以外の入力から
+変換したDEMにも、GeoTIFF等の標高ラスタ入力にも適用します。
+
+- CS計算用の `projected_dem.vrt` から、単バンドの標高値を保存します。
+- 出力CRS・セル幅・NoData・格子を引き継ぎます。保存時には追加の再投影・再サンプリングを行いません。
+- 平滑化・傾斜・曲率計算前の標高です。色付きの `cs_relief_merged.tif` とは別の成果です。
+- 範囲は格子整合済みの入力DEM全域です。CS画像は図郭まで広がるため、両者の画像幅・高さが同じとは限りません。位置合わせにはCRS・座標変換を使います。
+- 大容量になり得るため、追加のディスク空き容量を確保してください。BigTIFFは必要に応じて使用します。
+- `run.json` の `settings.merged_dem_enabled` と `dem_merged_geotiff` に有効／無効と保存先を記録します。
+- Processingの出力 `DEM_MERGED_GEOTIFF` から取得できます。標高DEMのQGISへの自動追加は行いません。
+- この設定を含む新しい保存プロファイルは、未対応の旧版では不明な設定として拒否されます。旧プロファイルの読込は引き続き可能です。
+
+図郭別DEMの恒久保存はこの追加機能の対象外です。図郭DEM作成は別プロジェクトの
+DEM Map Sheetsで扱います。CS Map Sheetsの図郭計算用DEMは従来どおり処理後に削除します。
+
 ## 参照・ライセンス
 
 - [QGIS 3.44 Processing plugin](https://docs.qgis.org/3.44/en/docs/pyqgis_developer_cookbook/processing.html)

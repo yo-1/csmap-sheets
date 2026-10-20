@@ -332,6 +332,7 @@ class ElevationAutoRangeTests(unittest.TestCase):
                         inputs=[str(root / "dem.tif")],
                         output_dir=str(root / "result"),
                         target_crs="EPSG:6677",
+                        merged_dem_enabled=True,
                         cell_size=1,
                         sigma_m=2,
                         plane_zone=9,
@@ -387,6 +388,7 @@ class IntegrationTests(unittest.TestCase):
                         inputs=[str(root / "dem_*.tif")],
                         output_dir=str(root / "result"),
                         target_crs="EPSG:6677",
+                        merged_dem_enabled=True,
                         cell_size=1,
                         sigma_m=2,
                         plane_zone=9,
@@ -398,6 +400,25 @@ class IntegrationTests(unittest.TestCase):
             )
             run(read_config(config))
             self.assertTrue((root / "result/projected_dem.vrt").exists())
+            aligned = gdal.Open(str(root / "result/projected_dem.vrt"))
+            exported = gdal.Open(str(root / "result/dem_merged.tif"))
+            self.assertEqual(exported.RasterCount, 1)
+            self.assertEqual(
+                exported.GetGeoTransform(), aligned.GetGeoTransform()
+            )
+            self.assertEqual(exported.GetProjection(), aligned.GetProjection())
+            self.assertEqual(
+                exported.GetRasterBand(1).GetNoDataValue(),
+                aligned.GetRasterBand(1).GetNoDataValue(),
+            )
+            np.testing.assert_array_equal(
+                exported.ReadAsArray(), aligned.ReadAsArray()
+            )
+            aligned = exported = None
+            manifest = json.loads(
+                (root / "result/run.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["dem_merged_geotiff"], "dem_merged.tif")
             rgba = gdal.Open(str(root / "result/cs_relief.vrt"))
             self.assertEqual((rgba.RasterXSize, rgba.RasterYSize), (800, 300))
             self.assertEqual(

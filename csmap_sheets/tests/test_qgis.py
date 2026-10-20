@@ -113,6 +113,7 @@ class QgisTests(unittest.TestCase):
                 "SLOPE_ALGORITHM": 1,
                 "XYZ_FORMAT": 1,
                 "XYZ_WEBP_QUALITY": 83,
+                "MERGED_DEM": True,
             }
             context = QgsProcessingContext()
             feedback = QgsProcessingFeedback()
@@ -123,6 +124,7 @@ class QgisTests(unittest.TestCase):
             )
             saved = json.loads(profile.read_text())["settings"]
             self.assertIn("max_input_pixels", saved)
+            self.assertIs(saved["merged_dem_enabled"], True)
             # A profile cannot replace the current input/output/CRS or
             # confirmation.
             payload = json.loads(profile.read_text())
@@ -289,6 +291,10 @@ class QgisTests(unittest.TestCase):
         )
         self.assertEqual(
             alg.parameterDefinition("FME_CURVATURE_B_MID").type(), "color"
+        )
+        self.assertIsNotNone(alg.outputDefinition("DEM_MERGED_GEOTIFF"))
+        self.assertIs(
+            alg.parameterDefinition("MERGED_DEM").defaultValue(), False
         )
         self.assertIsNotNone(alg.outputDefinition("SHEET_INDEX"))
         self.assertIsNotNone(alg.outputDefinition("XYZ_FOLDER"))
