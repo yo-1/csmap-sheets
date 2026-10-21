@@ -4,6 +4,7 @@
 
 - 欠測・ラスター端部の処理方式（`nodata_edge_mode`）を選べるようにした。既定の標準（`safe_mask`）は従来どおり。明示的に選ぶ`pss_approximation`は、計算時だけ端値の延長と、欠測した近傍の中心値による代用を行う試験的な近似で、PSS/FMEとの完全一致ではない。
 - 設定プロファイルの保存形式を`csmap-settings-profile-v5`へ更新。v5はv0.12.0以前では「不明な項目」として拒否される。方式キーのない旧プロファイルは標準（`safe_mask`）として読み、画面でPSS近似を選んでいれば警告して`run.json`の`profile_warnings`に記録する。
+- 外部プロファイルが処理上限（`max_pixels`・`max_sheets`・`max_sheet_pixels`・`max_input_pixels`・`max_input_files`）を既定値より大きくしている場合に、警告を画面・ログ・`run.json`の`profile_warnings`へ記録する（値は拒否しない。PR #57）。
 - 利用手順書・推奨設定・技術解説をMarkdown正本として整備し、処理画面のヘルプからリンクする。
 - 公式リポジトリ向けのmetadataの説明（description）を英語・日本語の併記にした。
 - 以下の旧「未リリース」節は、v0.13.0以前の項目とリリース済みの項目が混在している。整理は別途行う（文書のみ）。
