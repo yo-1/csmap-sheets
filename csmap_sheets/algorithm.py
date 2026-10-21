@@ -174,11 +174,19 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
     def tags(self):
         return ["CS", "DEM", "国土基本図", "図郭", "立体図", "色調", "merge"]
 
+    def helpUrl(self):
+        return (
+            "https://github.com/yo-1/csmap-sheets/blob/main/docs/user-guide.md"
+        )
+
     def shortHelpString(self):
         from .engine.pipeline import version_banner
 
         return (
             version_banner() + "\n"
+            '<a href="' + self.helpUrl() + '">利用手順書</a> ｜ '
+            '<a href="https://github.com/yo-1/csmap-sheets/blob/main/docs/'
+            'recommended-settings.md">推奨設定</a>（オンライン）\n'
             "複数DEM→平面直角座標系へ整合→独自CS方式画像→国土基本図図郭Ge"
             "oTIFF→XYZタイル（EPSG:3857、PNGまたはWebP）。"
             "入力形式を選び、ファイルまたはフォルダーを指定します。LAS/LAZと不規則テキスト点には外部PDAL 2.9以降が必要です。"
@@ -1415,11 +1423,13 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 merged, saved = merge_settings_profile(data, c)
             except ValueError as exc:
                 raise QgsProcessingException(str(exc)) from exc
-            mode, warning = profile_nodata_edge_mode(
+            # Do not reuse "mode": it holds the input type and is read again
+            # below for the direct file-selection check.
+            edge_mode, warning = profile_nodata_edge_mode(
                 saved, c["nodata_edge_mode"]
             )
             c = merged
-            c["nodata_edge_mode"] = mode
+            c["nodata_edge_mode"] = edge_mode
             if warning:
                 self.profile_warnings.append(warning)
                 feedback.pushWarning(warning)

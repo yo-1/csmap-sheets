@@ -281,6 +281,32 @@ class QgisTests(unittest.TestCase):
             self.assertFalse(ok)
             self.assertIn("見つかりません", message)
 
+    def test_documentation_and_parameter_defaults(self):
+        from csmap_sheets.algorithm import CSMapAlgorithm
+
+        alg = CSMapAlgorithm()
+        alg.initAlgorithm()
+        self.assertEqual(
+            alg.helpUrl(),
+            "https://github.com/yo-1/csmap-sheets/blob/main/docs/"
+            "user-guide.md",
+        )
+        self.assertIn('">利用手順書</a>', alg.shortHelpString())
+        self.assertIn(
+            'recommended-settings.md">推奨設定</a>', alg.shortHelpString(),
+        )
+        for key, expected in {
+            "PROFILE": 0, "RENDER_MODE": 0, "LEGACY_PRESET": 0,
+            "CELL": 1.0, "LEVEL": 0, "SIGMA_UNIT": 0, "SIGMA": 3.0,
+            "SLOPE_ALGORITHM": 0, "CURVE_LIMIT": 0.1,
+            "ELEV_MIN": 200.0, "ELEV_MAX": 2000.0,
+            "ELEV_AUTO": False, "XYZ": True,
+        }.items():
+            with self.subTest(key=key):
+                self.assertEqual(
+                    alg.parameterDefinition(key).defaultValue(), expected,
+                )
+
     def test_algorithm_parameters(self):
         from csmap_sheets.algorithm import CSMapAlgorithm
 
