@@ -74,11 +74,8 @@ def color_settings(settings=None):
     if not isinstance(settings, dict):
         raise ValueError("color must be an object")
     if set(settings) - set(COLOR_DEFAULTS):
-        raise ValueError(
-            f"Unknown color keys: {
-                sorted(set(settings) - set(COLOR_DEFAULTS))
-            }"
-        )
+        unknown_keys = sorted(set(settings) - set(COLOR_DEFAULTS))
+        raise ValueError(f"Unknown color keys: {unknown_keys}")
     result = {**COLOR_DEFAULTS, **settings}
     for key, value in result.items():
         if key.endswith("_rgb"):

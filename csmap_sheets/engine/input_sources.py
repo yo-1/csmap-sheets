@@ -408,11 +408,10 @@ def input_type_guidance(entry, c):
                     gsi_confirmed += kind == "gsi"
                     gsi_forest_zip += kind == "forest"
                 break
+    supported_extensions = '・'.join(sorted(EXTENSIONS[selected]))
     lines = [
-        f"入力形式「{INPUT_TYPE_NAMES[selected]}」で使えるファイル（{
-            '・'.join(sorted(EXTENSIONS[selected]))
-        }）が、"
-        f"指定した入力にありません。"
+        f"入力形式「{INPUT_TYPE_NAMES[selected]}」で使えるファイル（"
+        f"{supported_extensions}）が、指定した入力にありません。"
     ]
     found = [
         (key, label, types)
