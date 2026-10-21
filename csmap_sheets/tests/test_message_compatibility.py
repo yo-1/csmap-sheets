@@ -30,7 +30,9 @@ class MessageCompatibilityTests(unittest.TestCase):
                         "入力フォルダー・ファイルを確認してください。"
                     )
                     self.assertEqual(
-                        input_type_guidance(directory, {"input_type": selected}),
+                        input_type_guidance(
+                            directory, {"input_type": selected}
+                        ),
                         expected,
                     )
 
