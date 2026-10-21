@@ -74,11 +74,8 @@ def color_settings(settings=None):
     if not isinstance(settings, dict):
         raise ValueError("color must be an object")
     if set(settings) - set(COLOR_DEFAULTS):
-        raise ValueError(
-            f"Unknown color keys: {
-                sorted(set(settings) - set(COLOR_DEFAULTS))
-            }"
-        )
+        unknown_keys = sorted(set(settings) - set(COLOR_DEFAULTS))
+        raise ValueError(f"Unknown color keys: {unknown_keys}")
     result = {**COLOR_DEFAULTS, **settings}
     for key, value in result.items():
         if key.endswith("_rgb"):
@@ -284,10 +281,10 @@ def smoothing_summary(c):
         if r["sigma_unit"] == "m"
         else f"計算格子の画素数 {r['sigma_setting']:g} px"
     )
+    effective_sigma_px = r["effective_sigma_px"]
     return (
         f"曲率用平滑化: 指定 {head}／計算格子 {r['cell_size_m']:g} m／"
-        f"実効σ {r['effective_sigma_m']:g} m = {
-            r['effective_sigma_px']:g} px／"
+        f"実効σ {r['effective_sigma_m']:g} m = {effective_sigma_px:g} px／"
         f"カーネル {r['kernel_size_px']}×{r['kernel_size_px']} 画素"
     )
 
@@ -838,10 +835,9 @@ def check_sources(c, gdal, osr, feedback=None):
             "Selected CRS is not one of Japan Plane Rectangular zones I-XIX"
         )
     if c.get("plane_zone") is not None and c["plane_zone"] != zone:
+        legacy_zone = c["plane_zone"]
         raise ValueError(
-            f"target_crs is zone {zone}, but legacy plane_zone={
-                c['plane_zone']
-            }"
+            f"target_crs is zone {zone}, but legacy plane_zone={legacy_zone}"
         )
     c["plane_zone"] = zone
     lat, lon = JPR_ZONE_ORIGINS[zone - 1]
@@ -1420,11 +1416,10 @@ def run(c, feedback=None, profile_warnings=()):
             str(projected_path), c, gdal, osr
         )
         save()
+        projected_height = projected.RasterYSize
         report(
             feedback,
-            f"Projected mosaic: {projected.RasterXSize} x {
-                projected.RasterYSize
-            }",
+            f"Projected mosaic: {projected.RasterXSize} x {projected_height}",
         )
         projected.FlushCache()
         projected = vrt = None
