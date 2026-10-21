@@ -6,12 +6,12 @@
 
 # CS Map Sheets — QGISプラグイン
 
-QGIS公式版0.12.2／GitHub版・mainは0.12.4／QGIS 3.44.x向け／2026-10-20
+GitHub公開版は0.12.5（QGIS公式版は0.12.5を申請中）／mainは0.12.5公開後の開発版（PR #31の欠測・端部方式を含み未リリース）／QGIS 3.44.x向け／2026-10-21
 
 基本操作は[利用手順書](https://github.com/yo-1/csmap-sheets/blob/main/docs/user-guide.md)、
 適用値と検証区分は[推奨設定](https://github.com/yo-1/csmap-sheets/blob/main/docs/recommended-settings.md)、
 計算根拠は[技術解説](https://github.com/yo-1/csmap-sheets/blob/main/docs/technical-guide.md)を参照してください。
-本文には過去の変更経緯も含みます。0.12.3のUI改善はGitHub版0.12.4に含まれ、QGIS公式版0.12.2には含まれません。
+本文には過去の変更経緯も含みます。0.12.3のUI改善はGitHub版0.12.4以降に含まれ、QGIS公式版0.12.2には含まれません。
 
 Copyright (C) 2026 Yoichi Wada. GNU GPL v3.0 only.
 
