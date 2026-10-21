@@ -540,6 +540,37 @@ def merge_settings_profile(data, current):
     return merged, saved
 
 
+PROFILE_LIMIT_KEYS = (
+    "max_pixels",
+    "max_sheets",
+    "max_sheet_pixels",
+    "max_input_pixels",
+    "max_input_files",
+)
+
+
+def profile_limit_warnings(saved):
+    """Warn when a profile raises a processing limit above the default.
+
+    The limits guard memory and run time. Profiles may still change them
+    (a saved profile must reload as saved), so a larger value is reported
+    instead of rejected. Non-integer values are left to validate_config.
+    """
+    defaults = configuration_defaults()
+    warnings = []
+    for key in PROFILE_LIMIT_KEYS:
+        value = saved.get(key)
+        if type(value) is not int or key not in defaults:
+            continue
+        if value > defaults[key]:
+            warnings.append(
+                f"この設定プロファイルは処理上限 {key} を既定値"
+                f"（{defaults[key]:,}）より大きい {value:,} に設定しています。"
+                "メモリ使用量・処理時間が大きくなる可能性があります。"
+            )
+    return warnings
+
+
 def settings_profile(settings):
     return {
         "schema": PROFILE_SCHEMA,
