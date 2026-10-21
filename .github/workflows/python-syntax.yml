@@ -30,3 +30,12 @@ jobs:
         run: python -m pip install numpy scipy
       - name: Verify exact message strings and map-sheet codes
         run: python -m unittest csmap_sheets.tests.test_message_compatibility -v
+      - name: Check the same string fixtures against the unchanged base
+        if: matrix.python-version == '3.12'
+        run: |
+          git fetch --depth=1 origin 0a5121f7d3fe44e058a0aa1afa798c64ba16b326
+          reference_dir="$(mktemp -d)"
+          git archive 0a5121f7d3fe44e058a0aa1afa798c64ba16b326 csmap_sheets | tar -x -C "$reference_dir"
+          cp csmap_sheets/tests/test_message_compatibility.py "$reference_dir/csmap_sheets/tests/"
+          cd "$reference_dir"
+          python -m unittest csmap_sheets.tests.test_message_compatibility -v
