@@ -34,7 +34,7 @@ class MessageCompatibilityTests(unittest.TestCase):
                         expected,
                     )
 
-    def test_sheet_codes_keep_zero_padding_and_subdivision_suffixes(self):
+    def test_sheet_codes_keep_padding_and_suffixes(self):
         cases = (
             (0, 0, 9, ("09KE00", "09KE001", "09KE000A", "09KE0000")),
             (-160000, 300000, 1,
