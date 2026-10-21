@@ -6,7 +6,9 @@
 
 # CS Map Sheets — QGISプラグイン
 
-v0.12.0／QGIS 3.44向け試作版／2026-10-04
+v0.12.5リリース準備版（未公開）／QGIS 3.44向け／2026-10-21
+
+v0.12.4からの変更はPython 3.11の構文互換修正のみです。計算・既定値・出力文字列は維持します。公開済み版と本準備版を区別してください。[準備・検証記録](https://github.com/yo-1/csmap-sheets/blob/release/v0.12.5/docs/validation/python311-hotfix-0.12.5.md)はPRの取り込み後に参照できます。
 
 Copyright (C) 2026 Yoichi Wada. GNU GPL v3.0 only.
 

@@ -900,3 +900,11 @@ v0.12.2 公開整合記録（2026-10-17 05:11 JST）
 - 実GeoTIFF保存、保存DEMとVRTの配列・CRS・格子・NoData一致、元DEMとVRTを除いた単体での再読込が成功。
 - 上記の「実GDAL未確認」はこの実施条件に限り解消。Windows/QGIS 3.44、Qt6、大容量BigTIFFは未確認のまま。
 - 版番号・metadata・changelog・READMEを0.12.4へ整合。Release公開時に同一タグから検査済みZIPとSHA-256を添付するワークフローを追加。
+
+2026-10-21 — v0.12.5 Python 3.11構文互換のホットフィックス準備
+- 基準はv0.12.4タグ2f8951ba561663c58b98a90ed4a6177959c4dbd3。
+- 4ファイルのf文字列を構文互換の書き方に置換。出力文字列・計算・既定値は維持。
+- version_bannerとmetadataを0.12.5へ更新。experimental=True、QGIS対応範囲は維持。
+- 3.11／3.12 compileall、文字列4試験、変更前v0.12.4での同じ試験をCIで行う。
+- unit・GDAL・QGIS・preflightの結果はホットフィックスPRと完了報告を参照。
+- Windows実機、Qt6、公開ZIP差替え、タグ・Release・公式申請は未実施。

@@ -7,7 +7,7 @@ name: tests
 # （スキップ分は未実行であり、合格を意味しない）。
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   pull_request:
 
 permissions:
@@ -77,3 +77,28 @@ jobs:
         run: /usr/bin/python3 -c "from osgeo import gdal; import numpy, scipy; print('GDAL', gdal.VersionInfo('RELEASE_NAME'), 'numpy', numpy.__version__, 'scipy', scipy.__version__, 'WEBP', gdal.GetDriverByName('WEBP') is not None)"
       - name: Unit and GDAL integration tests
         run: /usr/bin/python3 -m unittest discover -s csmap_sheets/tests -t . -v
+
+  qgis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONPATH: /usr/share/qgis/python:/usr/share/qgis/python/plugins:.
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install QGIS LTR
+        run: |
+          sudo mkdir -p /etc/apt/keyrings
+          sudo curl -fsSL https://download.qgis.org/downloads/qgis-archive-keyring.gpg -o /etc/apt/keyrings/qgis-archive-keyring.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/qgis-archive-keyring.gpg] https://qgis.org/ubuntu-ltr noble main" | sudo tee /etc/apt/sources.list.d/qgis.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qgis python3-qgis python3-scipy
+      - name: Confirm supported QGIS version
+        run: |
+          python3 -c "from qgis.core import Qgis; print(Qgis.QGIS_VERSION); assert 34400 <= Qgis.QGIS_VERSION_INT < 34500"
+      - name: Full QGIS regression suite
+        run: python3 tools/run_qgis_tests.py
+      - name: Build and load the actual package
+        run: |
+          python3 tools/check_plugin_package.py /tmp/csmap_sheets.zip
+          python3 tools/check_qgis_package.py /tmp/csmap_sheets.zip

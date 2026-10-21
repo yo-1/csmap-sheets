@@ -11,8 +11,9 @@
 
 QGIS公式で公開済みの実験的プラグインは [0.12.2](https://plugins.qgis.org/plugins/csmap_sheets/version/0.12.2/) です。
 登録用ZIPとSHA-256は [GitHub Release v0.12.2](https://github.com/yo-1/csmap-sheets/releases/tag/v0.12.2) から取得できます。
-GitHub版の最新版は **v0.12.4** です。[Release・導入用ZIP・SHA-256](https://github.com/yo-1/csmap-sheets/releases/tag/v0.12.4) から取得できます。マージ・格子整合済みの標高DEMを `dem_merged.tif` として任意保存できます（既定オフ）。
-QGIS公式リポジトリへのv0.12.4反映は別途確認します。過去の公開整合記録は [2026-10-17監査](docs/validation/project-audit-20261017.md)、今回の変更と検証は [v0.12.4記録](docs/validation/merged-dem-0.12.4.md) を参照してください。
+本ブランチは **v0.12.5のリリース準備版（未公開）** です。v0.12.4にPython 3.11の構文互換修正だけを加え、計算・既定値・出力文字列は維持します。
+公開済みのGitHub版は [v0.12.4（導入用ZIP・SHA-256）](https://github.com/yo-1/csmap-sheets/releases/tag/v0.12.4) です。v0.12.5の配布・公式申請はまだ行っていません。
+今回の対象と検証手順は [v0.12.5準備記録](docs/validation/python311-hotfix-0.12.5.md)、以前の機能追加は [v0.12.4記録](docs/validation/merged-dem-0.12.4.md) を参照してください。
 
 本体は [`csmap_sheets/`](csmap_sheets/) フォルダーです。QGISの「ZIPからインストール」機能で
 導入する場合は、このフォルダーをZIP化して指定してください（プラグインIDは `csmap_sheets`）。

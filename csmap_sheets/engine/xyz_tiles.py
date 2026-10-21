@@ -198,9 +198,9 @@ def precheck_xyz_tile_count(path, c, gdal, osr):
         bounds, c["xyz_min_zoom"], c["xyz_max_zoom"]
     )
     if total > c["xyz_max_tiles"]:
+        tile_limit = c["xyz_max_tiles"]
         raise ValueError(
-            f"XYZ candidate tiles(事前見積り)={total:,}; limit={
-                c['xyz_max_tiles']:,}。"
+            f"XYZ candidate tiles(事前見積り)={total:,}; limit={tile_limit:,}。"
             "CS立体図の計算を開始する前に停止しました（無駄な計算時間を避けるため）。"
             "XYZ最大ズームを下げるか、XYZ候補枚数の上限(xyz_max_tiles)を増やしてください。"
         )
@@ -350,9 +350,10 @@ def write_xyz(source, destination, c, gdal, osr, feedback=None):
                     if feedback is not None:
                         feedback.setProgress(85 + 14 * done / total)
             save()
-            message = f"XYZ z={z}: {done}/{total}, {ext.upper()}={
-                info['written_tiles']
-            }"
+            written_tiles = info["written_tiles"]
+            message = (
+                f"XYZ z={z}: {done}/{total}, {ext.upper()}={written_tiles}"
+            )
             if feedback is not None:
                 feedback.pushInfo(message)
             else:
