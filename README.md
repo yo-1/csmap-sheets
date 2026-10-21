@@ -11,9 +11,8 @@
 
 QGIS公式で公開済みの実験的プラグインは [0.12.2](https://plugins.qgis.org/plugins/csmap_sheets/version/0.12.2/) です。
 登録用ZIPとSHA-256は [GitHub Release v0.12.2](https://github.com/yo-1/csmap-sheets/releases/tag/v0.12.2) から取得できます。
-GitHub版の最新版は **v0.12.5** です。[Release・導入用ZIP・SHA-256](https://github.com/yo-1/csmap-sheets/releases/tag/v0.12.5) から取得できます。v0.12.4にPython 3.11の構文互換修正だけを加え、計算・既定値・出力文字列は維持します。
-QGIS公式リポジトリへ0.12.5をアップロードしました（自動検査は合格。公開状態は別途確認します）。mainにはPR #31の欠測・端部方式など、v0.12.5に含まれない未リリースの変更が入っています。
-詳細は [v0.12.5記録](docs/validation/python311-hotfix-0.12.5.md)、[v0.12.4記録](docs/validation/merged-dem-0.12.4.md) を参照してください。
+GitHub版の最新の公開版は **v0.12.5** です。[Release・導入用ZIP・SHA-256](https://github.com/yo-1/csmap-sheets/releases/tag/v0.12.5) から取得できます。
+本ブランチは **v0.13.0のリリース準備版（未公開）** です。v0.12.5に、欠測・端部の処理方式の選択（既定は従来どおり）と設定プロファイルv5などを加えています。公開前の確認事項は [v0.13.0準備記録](docs/validation/release-0.13.0-prep.md) を参照してください。
 
 本体は [`csmap_sheets/`](csmap_sheets/) フォルダーです。QGISの「ZIPからインストール」機能で
 導入する場合は、このフォルダーをZIP化して指定してください（プラグインIDは `csmap_sheets`）。
