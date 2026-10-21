@@ -1,4 +1,4 @@
-"""Profiles may raise processing limits; a larger value is reported, not rejected.
+"""A profile may raise processing limits; a larger value is only reported.
 
 No raster computation or QGIS is required.
 """
