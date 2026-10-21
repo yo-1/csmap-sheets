@@ -1088,11 +1088,10 @@ def prepare_inputs(c, work, gdal, osr, feedback=None):
                         feedback,
                     )
                     if masked:
+                        nodata_codes = ', '.join(f'{v:g}' for v in codes)
                         say(
                             feedback,
-                            f"NoData設定と異なる欠測値（{
-                                ', '.join(f'{v:g}' for v in codes)
-                            }）を"
+                            f"NoData設定と異なる欠測値（{nodata_codes}）を"
                             f"{masked}画素検出し、NoDataとして扱いました: {path}",
                         )
                     source = {

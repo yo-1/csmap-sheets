@@ -350,9 +350,10 @@ def write_xyz(source, destination, c, gdal, osr, feedback=None):
                     if feedback is not None:
                         feedback.setProgress(85 + 14 * done / total)
             save()
-            message = f"XYZ z={z}: {done}/{total}, {ext.upper()}={
-                info['written_tiles']
-            }"
+            written_tiles = info["written_tiles"]
+            message = (
+                f"XYZ z={z}: {done}/{total}, {ext.upper()}={written_tiles}"
+            )
             if feedback is not None:
                 feedback.pushInfo(message)
             else:
