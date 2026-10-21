@@ -51,9 +51,8 @@ def sheet_at(easting, northing, zone, level):
     col5, subcol = divmod(col, div)
     majorrow, minorrow = divmod(row5, 10)
     majorcol, minorcol = divmod(col5, 10)
-    code = f"{zone:02d}{chr(65 + majorrow)}{chr(65 + majorcol)}{minorrow}{
-        minorcol
-    }"
+    major_code = f"{zone:02d}{chr(65 + majorrow)}{chr(65 + majorcol)}"
+    code = f"{major_code}{minorrow}{minorcol}"
     if level == 2500:
         code += str(subrow * 2 + subcol + 1)
     elif level == 1000:

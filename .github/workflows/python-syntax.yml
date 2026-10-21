@@ -1,0 +1,37 @@
+name: Python syntax compatibility
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Show Python version and compile all tracked Python files
+        run: |
+          python --version
+          python -m compileall -q csmap_sheets tools
+      - name: Install message-test dependencies
+        run: python -m pip install numpy scipy
+      - name: Verify exact message strings and map-sheet codes
+        run: python -m unittest csmap_sheets.tests.test_message_compatibility -v
+      - name: Check the same string fixtures against the unchanged base
+        if: matrix.python-version == '3.12'
+        run: |
+          git fetch --depth=1 origin 2f8951ba561663c58b98a90ed4a6177959c4dbd3
+          reference_dir="$(mktemp -d)"
+          git archive 2f8951ba561663c58b98a90ed4a6177959c4dbd3 csmap_sheets | tar -x -C "$reference_dir"
+          cp csmap_sheets/tests/test_message_compatibility.py "$reference_dir/csmap_sheets/tests/"
+          cd "$reference_dir"
+          python -m unittest csmap_sheets.tests.test_message_compatibility -v

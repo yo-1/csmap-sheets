@@ -408,11 +408,10 @@ def input_type_guidance(entry, c):
                     gsi_confirmed += kind == "gsi"
                     gsi_forest_zip += kind == "forest"
                 break
+    supported_extensions = '・'.join(sorted(EXTENSIONS[selected]))
     lines = [
-        f"入力形式「{INPUT_TYPE_NAMES[selected]}」で使えるファイル（{
-            '・'.join(sorted(EXTENSIONS[selected]))
-        }）が、"
-        f"指定した入力にありません。"
+        f"入力形式「{INPUT_TYPE_NAMES[selected]}」で使えるファイル（"
+        f"{supported_extensions}）が、指定した入力にありません。"
     ]
     found = [
         (key, label, types)
@@ -1089,11 +1088,10 @@ def prepare_inputs(c, work, gdal, osr, feedback=None):
                         feedback,
                     )
                     if masked:
+                        nodata_codes = ', '.join(f'{v:g}' for v in codes)
                         say(
                             feedback,
-                            f"NoData設定と異なる欠測値（{
-                                ', '.join(f'{v:g}' for v in codes)
-                            }）を"
+                            f"NoData設定と異なる欠測値（{nodata_codes}）を"
                             f"{masked}画素検出し、NoDataとして扱いました: {path}",
                         )
                     source = {
