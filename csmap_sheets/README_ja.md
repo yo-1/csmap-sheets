@@ -6,7 +6,7 @@
 
 # CS Map Sheets — QGISプラグイン
 
-GitHub公開版は0.12.5／本ブランチはv0.13.0リリース準備版（未公開。欠測・端部の処理方式を含む）／QGIS 3.44.x向け／2026-10-21
+既存公開版は0.12.5／本ブランチはv0.13.0通常版登録準備（experimental=False、未申請・未公開）／QGIS 3.44.x向け／2026-10-22
 
 基本操作は[利用手順書](https://github.com/yo-1/csmap-sheets/blob/main/docs/user-guide.md)、
 適用値と検証区分は[推奨設定](https://github.com/yo-1/csmap-sheets/blob/main/docs/recommended-settings.md)、
@@ -83,7 +83,7 @@ FME資料の曲率表記は通常−10～+10（10m DEMは−5～+5）です。�
 
 ## インストール
 
-1. プラグインのZIP（例：`csmap_sheets-v0.12.4.zip`）を、GitHubの「Releases」から入手します。ZIPは解凍しません。
+1. プラグインのZIP（例：`csmap_sheets-v0.13.0.zip`）を、GitHubの「Releases」から入手します。ZIPは解凍しません。
 2. QGISで「プラグイン」→「プラグインの管理とインストール」を開きます。
 3. 「ZIPからインストール」でこのZIPを選択し、インストールします。
 4. インストール済み一覧で「CS Map Sheets」を有効にします。
@@ -91,7 +91,7 @@ FME資料の曲率表記は通常−10～+10（10m DEMは−5～+5）です。�
 
 ツール名は「DEMマージ・CS色調調整・国土基本図図郭・XYZ出力」です。ラスタメニューの「CS Map Sheets」やツールバーのアイコンからも開けます。
 
-QGIS公式は0.12.2（実験的プラグイン）、GitHub版は0.12.4です。配布経路と版を確認してください。
+本登録準備ZIPは0.13.0（通常版指定）です。Windows実機確認後にユーザーが公式申請します。旧実験版の存在と本版の分類を区別してください。
 
 ## 最初の実行
 

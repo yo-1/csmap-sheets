@@ -2,7 +2,7 @@
 name=CS Map Sheets
 qgisMinimumVersion=3.44
 qgisMaximumVersion=3.99
-description=Create CS terrain relief maps from elevation data and export map-sheet GeoTIFFs, a merged GeoTIFF and XYZ tiles. / 多様な標高データからCS立体図を作成し、図郭別・結合GeoTIFFとPNG/WebPのXYZタイルを出力します。
+description=多様な標高データからCS立体図を作成し、図郭別・結合GeoTIFFとPNG/WebPのXYZタイルを出力します。 / Generate CS terrain relief, map-sheet and merged GeoTIFFs, and XYZ tiles.
 about=多様な標高データから、傾斜・曲率・標高を組み合わせたCS立体図を作成するQGISプラグインです。
     多様な入力に対応：GeoTIFFなどの標高ラスタ、国土地理院の数値標高モデル（ZIP/XML）、森林航空レーザ成果のLEM＋CSV/TXT、標高テキスト、LAS/LAZ点群を利用できます。
     計算方式・パラメータを選択：傾斜計算はHorn法（既定）・中央差分法から選択できます。描画方式、平滑化、曲率の範囲、配色なども調整でき、設定をJSONで保存・再利用できます。
@@ -17,9 +17,9 @@ homepage=https://github.com/yo-1/csmap-sheets
 tracker=https://github.com/yo-1/csmap-sheets/issues
 repository=https://github.com/yo-1/csmap-sheets
 changelog=0.13.0
+    - 通常版（experimental=False）として登録用ZIPを準備。Windows実機確認・公式申請は別途実施。
     - 欠測・端部の処理方式を選べる設定を追加。既定は従来どおりの標準（safe_mask）で、既定の出力はv0.12.5と同じ。選択は近似であり、PSSとの完全一致ではない。
     - 設定プロファイルの形式をv5へ更新。v5のプロファイルは0.12.0以前の版では読めない。旧形式のプロファイルは読み込める。
-    - 外部プロファイルが処理上限を既定値より大きくしている場合に警告を表示・記録するようにした。
     - 利用手順書・推奨設定をMarkdown正本として整備し、処理画面のヘルプから参照できるようにした。
     - 公式リポジトリの説明（description）を英語・日本語の併記にした。
 
@@ -140,6 +140,6 @@ changelog=0.13.0
     Copyright (C) 2026 Yoichi Wada. GNU GPL v3.0 only.
 category=Raster
 hasProcessingProvider=yes
-experimental=True
+experimental=False
 deprecated=False
 icon=icon.svg

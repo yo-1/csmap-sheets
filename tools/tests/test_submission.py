@@ -1,6 +1,7 @@
 """Ensure malformed packages and scanner failures cannot receive a pass."""
 import contextlib
 import io
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -46,9 +47,11 @@ class SubmissionTests(unittest.TestCase):
                             if case == "boolean" and info.filename.endswith(
                                 "/metadata.txt"
                             ):
-                                data = data.replace(
-                                    b"experimental=True", b"experimental=oops"
+                                data, count = re.subn(
+                                    br"(?m)^experimental=(True|False)$",
+                                    b"experimental=oops", data,
                                 )
+                                self.assertEqual(count, 1)
                             if case == "syntax" and info.filename.endswith(
                                 "/algorithm.py"
                             ):
