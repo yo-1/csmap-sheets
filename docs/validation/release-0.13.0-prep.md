@@ -14,7 +14,7 @@
 ## 通常版指定と制約
 
 ZIP内部でversion=0.13.0、experimental=False。通常版指定はWindows実機合格・申請・承認・公開の意味ではない。
-今回の追加差分はmetadata、README、CHANGELOG、検証文書、成果物梱包のCIのみ。計算式・配色・DEM処理・JSONスキーマは#56から変更しない。
+追加差分はmetadata、README、CHANGELOG、検証文書、成果物梱包のCI、およびWindows受入で発見した図郭索引の読込み後スタイル修正。計算式・配色・DEM処理・JSONスキーマは#56から変更しない。
 標準safe_maskと明示選択のpss_approximationを含む。後者はPSS/FMEとの完全一致を保証しない。
 Windows実機、Qt6実行、広域BigTIFF、独立FME参照出力との比較は未実施。
 [Windows確認手順](windows-0.13.0.md)の結果を記録し、ユーザーが公開判断する。
@@ -45,3 +45,13 @@ GitHub Actionsの成果物から取得できるようにする。Driveツール�
 - 採用済みDEM/設定で画像再生成：RGB/alpha全画素一致、変更画素0、最大差0（独立した正解画像との比較ではない）。
 - PDALの任意HDF/icebridge readerは依存ライブラリ不足の診断を出す。今回のLAS/LAZテストは成功。HDF/icebridge入力は未検証。
 - Windows実機・Qt6実行・QGISサイト検査は未実施。CIのPython 3.11/3.12、unit/gdal/qgis/preflightは最終コミットのチェック結果を別途確認する。
+
+## Windows受入で見つかった図郭索引の表示修正
+
+ユーザーの0.13.0/Windows/QGIS 3.44.13のrun.jsonと出力を確認。
+標高DEMの有効値・格子・欠測位置は入力と一致、CS画像は同一設定で再生成した全RGBAと一致。
+一方、Processingのポリゴン既定スタイルがQMLの枠線表示を上書きする経路で、塗りつぶしを再現。
+読込みの最終post-processorで塗りなし・枠線を設定する。実行clone破棄後もPython overrideを保持する。
+読み込まれずcontextが破棄されたprocessorの参照は次回生成時に除去する。
+回帰試験は塗りつぶし既定スタイルと実行algorithm破棄を含む。Windowsでの修正版再確認は未実施。
+JSON保存はWindowsログで成功。再読込、分割入力、PSS、PNG/WebPの実機確認はまだ未実施。

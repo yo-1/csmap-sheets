@@ -999,3 +999,18 @@ v0.12.2 公開整合記録（2026-10-17 05:11 JST）
 - Windows/QGIS実機、Qt6実行、広域BigTIFF、公式申請・審査・公開は未実施。
 - docs/validation/windows-0.13.0.mdに実機手順・期待結果・記録欄を用意。
 - 最終元SHA・ZIPサイズ・SHA256・ファイル一覧は同梱納品報告を参照。
+
+2026-10-22 — Windows受入の図郭索引塗りつぶし対策（0.13.0準備ZIP改訂）
+- Windows/QGIS 3.44.13/Python 3.12.13/GDAL 3.13.2の提供結果を確認。
+  基本実行completed、4図郭、標高DEM保存、JSON保存ログを確認。
+- 提供dem_merged.tifは入力と400x400/1m/CRS/有効値/欠測位置が一致。
+  CS画像はrun.jsonと同じ設定でLinux再生成したRGBA全画素と一致、最大差0。
+- 提供QMLは塗りなしで正常。Processingのポリゴン既定スタイルが
+  自動読込み時のQMLを上書きする条件で同じ塗りつぶしを再現。
+- LayerDetailsのpost-processorで読み込み後に枠線のみを設定。
+  Python processorは実行algorithmのclone破棄をまたいで保持し、完了後解放。
+- 塗りつぶし既定スタイル・algorithm破棄を含む回帰試験を追加。
+  QGIS 3.44.14: 221件中220成功、1スキップ(WEBP欠如分岐)、失敗0。
+- processing.runAndLoadResultsの実行でも枠線のみを確認、保留processor参照0。
+- 計算式・配色・DEM処理・JSONスキーマは変更なし。
+- 修正版のWindows再導入・図郭自動表示、JSON再読込等は未実施。

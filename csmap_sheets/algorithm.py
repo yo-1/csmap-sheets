@@ -4,9 +4,14 @@ import json
 from pathlib import Path
 import uuid
 from qgis.PyQt.QtGui import QColor
+from qgis.PyQt import sip
 from qgis.core import (
     Qgis,
     QgsProcessing,
+    QgsProcessingLayerPostProcessorInterface,
+    QgsFillSymbol,
+    QgsSingleSymbolRenderer,
+    QgsVectorLayer,
     QgsProcessingAlgorithm,
     QgsProcessingException,
     QgsProcessingParameterMultipleLayers,
@@ -27,6 +32,43 @@ from qgis.core import (
     QgsProcessingParameterString,
     QgsCoordinateReferenceSystem,
 )
+
+
+class _SheetIndexPostProcessor(QgsProcessingLayerPostProcessorInterface):
+    """Apply outline-only styling after Processing's configured defaults."""
+
+    # Processing executes a cloned algorithm, which is destroyed before loading
+    # results. Keep the Python override alive independently of that clone.
+    _pending = []
+
+    @classmethod
+    def create(cls):
+        cls._pending[:] = [p for p in cls._pending if not sip.isdeleted(p)]
+        processor = cls()
+        cls._pending.append(processor)
+        return processor
+
+    def postProcessLayer(self, layer, context, feedback):
+        try:
+            self._apply(layer)
+        finally:
+            if self in self._pending:
+                self._pending.remove(self)
+
+    @staticmethod
+    def _apply(layer):
+        if isinstance(layer, QgsVectorLayer):
+            symbol = QgsFillSymbol.createSimple({
+                "style": "no",
+                "outline_style": "solid",
+                "outline_color": "60,60,60,255",
+                "outline_width": "0.2",
+                "outline_width_unit": "MM",
+                "joinstyle": "miter",
+            })
+            layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+            layer.triggerRepaint()
+
 
 # v0.9.3: 個別ファイル選択（FILESパラメータ）の件数上限。QGIS自身の
 # Processingフレームワークが実行時に選択件数分のレイヤー解決を試みる挙動により、
@@ -1588,10 +1630,12 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 ("CS_IMAGE", "CS方式立体図"),
                 ("SHEET_INDEX", "CS出力図郭"),
             ]:
-                context.addLayerToLoadOnCompletion(
-                    outputs[key],
-                    QgsProcessingContext.LayerDetails(
-                        label, context.project(), key
-                    ),
+                details = QgsProcessingContext.LayerDetails(
+                    label, context.project(), key
                 )
+                context.addLayerToLoadOnCompletion(outputs[key], details)
+                if key == "SHEET_INDEX":
+                    context.layerToLoadOnCompletionDetails(
+                        outputs[key]
+                    ).setPostProcessor(_SheetIndexPostProcessor.create())
         return outputs
