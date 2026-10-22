@@ -17,6 +17,7 @@ homepage=https://github.com/yo-1/csmap-sheets
 tracker=https://github.com/yo-1/csmap-sheets/issues
 repository=https://github.com/yo-1/csmap-sheets
 changelog=0.13.0
+    - 欠測処理の画面・ログ名称を「境界補完」へ変更。計算とJSONの識別子は維持。
     - 処理結果の図郭索引を読込み後に枠線表示へ設定し、CS画像を隠さないよう修正。
     - 通常版（experimental=False）として登録用ZIPを準備。Windows実機確認・公式申請は別途実施。
     - 欠測・端部の処理方式を選べる設定を追加。既定は従来どおりの標準（safe_mask）で、既定の出力はv0.12.5と同じ。選択は近似であり、PSSとの完全一致ではない。
