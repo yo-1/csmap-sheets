@@ -90,6 +90,76 @@ class QgisTests(unittest.TestCase):
                 )
                 loaded = None
 
+    def test_processing_index_style_overrides_configured_polygon_fill(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from qgis.core import (
+            QgsVectorLayer, QgsVectorFileWriter, QgsProject, QgsFillSymbol,
+        )
+        from qgis.PyQt.QtCore import Qt
+        from processing.core.ProcessingConfig import ProcessingConfig
+        from processing.gui.Postprocessing import handleAlgorithmResults
+        from csmap_sheets.algorithm import CSMapAlgorithm
+        from csmap_sheets.engine.output_style import write_sheet_index_style
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "sheet_index.gpkg"
+            from osgeo import gdal
+            raster = gdal.GetDriverByName("GTiff").Create(
+                str(root / "tiny.tif"), 1, 1, 1, gdal.GDT_Byte,
+            )
+            raster.SetGeoTransform((0, 1, 0, 1, 0, -1))
+            gdal.Translate(str(root / "cs_relief.vrt"), raster, format="VRT")
+            raster = None
+            project = QgsProject()
+            layer = QgsVectorLayer("Polygon?crs=EPSG:6677", "sheets", "memory")
+            options = QgsVectorFileWriter.SaveVectorOptions()
+            options.driverName = "GPKG"
+            QgsVectorFileWriter.writeAsVectorFormatV3(
+                layer, str(path), project.transformContext(), options,
+            )
+            write_sheet_index_style(path)
+            layer.renderer().setSymbol(QgsFillSymbol.createSimple({
+                "style": "solid", "color": "200,160,100,255",
+            }))
+            solid_style = root / "global-polygon.qml"
+            layer.saveNamedStyle(str(solid_style))
+            setting = ProcessingConfig.VECTOR_POLYGON_STYLE
+            previous = ProcessingConfig.getSetting(setting)
+            try:
+                ProcessingConfig.setSettingValue(setting, str(solid_style))
+                alg = CSMapAlgorithm()
+                alg.initAlgorithm()
+                alg.result_dir = root
+                alg.load_outputs = True
+                alg.settings = dict(
+                    xyz_enabled=False, merged_geotiff_enabled=False,
+                    merged_dem_enabled=False,
+                )
+                context = QgsProcessingContext()
+                context.setProject(project)
+                feedback = QgsProcessingFeedback()
+                with patch("csmap_sheets.engine.pipeline.run"):
+                    alg.processAlgorithm({}, context, feedback)
+                # Real Processing destroys its execution clone before loading.
+                del alg
+                import gc
+                gc.collect()
+                alg = CSMapAlgorithm()
+                alg.initAlgorithm()
+                self.assertTrue(handleAlgorithmResults(alg, context, feedback))
+                loaded = [layer for layer in project.mapLayers().values()
+                          if isinstance(layer, QgsVectorLayer)]
+                self.assertEqual(len(loaded), 1)
+                symbol = loaded[0].renderer().symbol().symbolLayer(0)
+                self.assertEqual(symbol.brushStyle(), Qt.BrushStyle.NoBrush)
+                self.assertEqual(symbol.strokeStyle(), Qt.PenStyle.SolidLine)
+            finally:
+                ProcessingConfig.setSettingValue(setting, previous)
+                project.removeAllMapLayers()
+
     def test_settings_profile_round_trip(self):
         import json
         import tempfile
