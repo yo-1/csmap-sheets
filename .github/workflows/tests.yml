@@ -44,6 +44,24 @@ jobs:
         run: python -m unittest discover -s tools/tests -v
       - name: Inspect the actual submission ZIP
         run: python tools/check_submission.py /tmp/csmap_sheets.zip /tmp/submission-checks
+      - name: Prepare v0.13.0 review delivery
+        run: |
+          mkdir -p /tmp/csmap-0.13.0-delivery
+          cp /tmp/csmap_sheets.zip /tmp/csmap-0.13.0-delivery/csmap_sheets-v0.13.0.zip
+          cp docs/validation/windows-0.13.0.md /tmp/csmap-0.13.0-delivery/
+          sed "s/SOURCE_COMMIT_SHA/$(git rev-parse HEAD)/g" docs/validation/release-0.13.0-prep.md > /tmp/csmap-0.13.0-delivery/inspection-report.md
+          stat --printf='ZIP bytes: %s\n' /tmp/csmap_sheets.zip >> /tmp/csmap-0.13.0-delivery/inspection-report.md
+          unzip -Z1 /tmp/csmap_sheets.zip > /tmp/csmap-0.13.0-delivery/file-list.txt
+          cd /tmp/csmap-0.13.0-delivery
+          sha256sum csmap_sheets-v0.13.0.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt >> inspection-report.md
+          cat file-list.txt >> inspection-report.md
+      - name: Upload v0.13.0 review delivery
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: csmap-sheets-v0.13.0-final
+          path: /tmp/csmap-0.13.0-delivery/
+          if-no-files-found: error
       - name: Upload validated submission ZIP
         uses: actions/upload-artifact@v7.0.2
         with:
