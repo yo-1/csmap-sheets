@@ -9,11 +9,12 @@
 
 ## 公開版と開発版
 
-QGIS公式で公開済みの実験的プラグインは [0.12.2](https://plugins.qgis.org/plugins/csmap_sheets/version/0.12.2/) です。
-登録用ZIPとSHA-256は [GitHub Release v0.12.2](https://github.com/yo-1/csmap-sheets/releases/tag/v0.12.2) から取得できます。
-GitHub版の最新版は **v0.12.5** です。[Release・導入用ZIP・SHA-256](https://github.com/yo-1/csmap-sheets/releases/tag/v0.12.5) から取得できます。v0.12.4にPython 3.11の構文互換修正だけを加え、計算・既定値・出力文字列は維持します。
-QGIS公式リポジトリへ0.12.5をアップロードしました（自動検査は合格。公開状態は別途確認します）。mainにはPR #31の欠測・端部方式など、v0.12.5に含まれない未リリースの変更が入っています。
-詳細は [v0.12.5記録](docs/validation/python311-hotfix-0.12.5.md)、[v0.12.4記録](docs/validation/merged-dem-0.12.4.md) を参照してください。
+QGIS公式の既存公開版はv0.12.5です（利用者報告）。既存版の削除・差替えは行いません。
+本ブランチは **v0.13.0の通常版登録用準備（未申請・未公開）** です。
+`experimental=False`を指定し、v0.12.5に欠測・端部の方式選択、設定プロファイルv5、ヘルプ導線を加えています。
+未マージのPR #57（処理上限警告）は含みません。Windows実機合格とは別判定です。
+[採用範囲・検証記録](docs/validation/release-0.13.0-prep.md)と
+[Windows受入確認](docs/validation/windows-0.13.0.md)を確認してください。
 
 本体は [`csmap_sheets/`](csmap_sheets/) フォルダーです。QGISの「ZIPからインストール」機能で
 導入する場合は、このフォルダーをZIP化して指定してください（プラグインIDは `csmap_sheets`）。
@@ -24,8 +25,7 @@ QGIS公式リポジトリへ0.12.5をアップロードしました（自動検�
 - [推奨設定](docs/recommended-settings.md) — 実装上の既定値・暫定推奨・比較検証済みの範囲
 - [技術解説](docs/technical-guide.md) — 傾斜・曲率・配色・欠測処理と再現条件
 
-Markdownが正本です。公開版0.12.2とGitHub版0.12.5の差は各書に明記しています。
-画面内の手順書リンクは開発版で追加した機能です。
+Markdownが正本です。本書類は0.13.0の登録準備版を対象とし、過去版の履歴は区別して記載します。
 
 詳細な機能説明・入力形式・設定項目・既知の制約は以下を参照してください。
 

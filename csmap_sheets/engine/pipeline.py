@@ -41,7 +41,7 @@ from .input_sources import (
     prepare_inputs,
 )
 
-VERSION = "0.12.5"
+VERSION = "0.13.0"
 PLUGIN_TITLE_JA = "図郭対応CS立体図作成プラグイン（CS Map Sheets）"
 
 
@@ -116,8 +116,8 @@ SLOPE_ALGORITHMS = ("horn", "central_difference")
 SLOPE_ALGORITHM_NAMES = {"horn": "Horn法", "central_difference": "中央差分法"}
 NODATA_EDGE_MODES = ("safe_mask", "pss_approximation")
 NODATA_EDGE_MODE_NAMES = {
-    "safe_mask": "標準（欠測の影響範囲を透過）",
-    "pss_approximation": "PSS互換を目指す（計算用補完）",
+    "safe_mask": "標準：欠測の影響範囲を透過",
+    "pss_approximation": "境界補完：計算時のみ端部・欠測近傍を補完",
 }
 
 
@@ -129,7 +129,7 @@ def profile_nodata_edge_mode(saved, chosen):
     if chosen != "safe_mask":
         warning = (
             "この設定プロファイルには欠測・端部の処理方式（nodata_edge_mode）がないため、"
-            "標準（safe_mask）として読みます。画面のPSS近似の選択は適用しません。"
+            "標準（safe_mask）として読みます。画面の境界補完の選択は適用しません。"
         )
     return "safe_mask", warning
 
