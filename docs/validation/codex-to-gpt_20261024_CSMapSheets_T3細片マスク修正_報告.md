@@ -57,3 +57,9 @@ Linux / Python3.14.8 / QGIS3.44.14 / GDAL3.13.3 / NumPy2.5.3 / SciPy1.18.1 / Qt5
 4. 統括がWindows結果とPRレビューを踏まえ次版採用・公開可否を判断。CodexのPR作成はマージ・公開を意味しない。
 
 Driveツールはこのセッションに提供されておらず、Drive保存未実施。指定名の本MarkdownをGitHubへ代替保存し、PRとIssue #67から辿れるようにする。受領・着手・実装完了・Windows受入・公開を区別して報告する。
+
+## PR・実装コミット
+
+- PR：[PR #68](https://github.com/yo-1/csmap-sheets/pull/68)（mainへ未マージ）。
+- 実装・回帰・検証記録コミット：`4fcbb343bfb7ace72099e6af0be2e3c611975f87`。以後の報告文書だけのコミットと区別する。
+- GitHub CIの最終head結果はPR Checksを参照。未完了CIを成功として計上しない。
