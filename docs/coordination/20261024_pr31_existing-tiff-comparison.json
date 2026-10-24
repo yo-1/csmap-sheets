@@ -1,0 +1,27 @@
+[
+  {
+    "name": "CS",
+    "shape": [
+      4,
+      600,
+      800
+    ],
+    "same_grid": true,
+    "same_projection": true,
+    "max_difference": 0.0,
+    "differing_values": 0,
+    "alpha_differing_pixels": 0,
+    "differing_pixels": 0
+  },
+  {
+    "name": "DEM",
+    "shape": [
+      400,
+      400
+    ],
+    "same_grid": true,
+    "same_projection": true,
+    "max_difference": 0.0,
+    "differing_values": 0
+  }
+]
