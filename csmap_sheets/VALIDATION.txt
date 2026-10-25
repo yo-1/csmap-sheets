@@ -1035,3 +1035,17 @@ v0.12.2 公開整合記録（2026-10-17 05:11 JST）
 - 今回は記録・成果物整理のみ。#61の計算・表示実装を追加変更しない。
 - #57除外。#59サンプルは登録用ZIP外。Draft依存関係と統合順序を最終報告に整理。
 - 通常版指定0.13.0、未申請・未承認・未公開。マージ・タグ・Releaseは未実施。
+
+2026-10-24 T3細片マスク修正（専用ブランチ、公開0.13.0は変更しない）
+- 基準main: 9db30b214cd869b4b967cc8751771b38adec3a55。
+- マスク後全alpha=0だけをEmptyReliefErrorで識別し図郭単位スキップ。
+  safe_maskの浸食・計算は維持、他の例外とキャンセルは伝播する。
+- sheets.written/skipped_emptyとstatusは維持。skipped(ID/理由)、
+  partial_successを追加し、全空failed時にも診断をrun.jsonへ保存。
+- 再構成人工DEMで修正前の例外停止を確認、修正後は10図郭スキップ・
+  2図郭出力・completed。索引/VRT/XYZ/結合画像の整合を検査。
+- Linux QGIS3.44.14/Python3.14.8/GDAL3.13.3で228件中227成功、
+  WEBP欠如分岐1スキップ、失敗0。新規7件＋GDAL図郭比較は8件成功。
+- Flake8/Bandit指摘0、compileall成功。Drive元ZIP未取得、入力は
+  報告の幾何条件から再構成し原本一致とはしない。Windows3.44.13正式受入は未実施。
+- 詳細: docs/validation/codex-to-gpt_20261024_CSMapSheets_T3細片マスク修正_報告.md。
