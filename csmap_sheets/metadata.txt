@@ -12,7 +12,7 @@ about=多様な標高データから、傾斜・曲率・標高を組み合わ�
     English: CS Map Sheets generates CS terrain relief from elevation rasters, GSI DEMs (ZIP/XML), forestry LEM data with CSV/TXT metadata, elevation text grids, and LAS/LAZ point clouds. Choose Horn (default) or central-difference slope calculations, rendering methods, smoothing, curvature ranges, and colors. Save and reload settings as JSON. Export Japanese national base-map sheet GeoTIFFs, a merged GeoTIFF, and PNG/WebP XYZ tiles with lossy or lossless WebP compression. The companion FME CSMap Pipeline can be called from FME SystemCaller: https://github.com/yo-1/fme-csmap-pipeline
 version=0.13.0
 author=Yoichi Wada
-email=yoh@mail.pippin-itabashi.net
+email=yo-1@geographic-information.net
 homepage=https://github.com/yo-1/csmap-sheets
 tracker=https://github.com/yo-1/csmap-sheets/issues
 repository=https://github.com/yo-1/csmap-sheets
