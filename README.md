@@ -9,9 +9,10 @@
 
 ## 公開版と開発版
 
-GitHub Releaseの最新版は **v0.13.0**（2026-10-23公開、`experimental=False`）です。QGIS公式リポジトリへ申請済みですが、管理者承認・通常版配信は未確認です。既存版の削除・差替えは行いません。
+GitHub Releaseの最新版は **v0.13.0**（2026-10-23公開、`experimental=False`）です。QGIS公式ページで通常版0.13.0の掲載を確認済みです。既存版の削除・差替えは行いません。
 `experimental=False`を指定し、v0.12.5に欠測・端部の方式選択、設定プロファイルv5、ヘルプ導線を加えています。
-未マージのPR #57（処理上限警告）は含みません。Windows実機合格とは別判定です。
+mainはPR #68の空図郭スキップ修正と連絡先更新を含むv0.13.1の公開準備中です。[v0.13.1の採用範囲・検証記録](docs/validation/release-0.13.1.md)を参照してください。
+PR #57（処理上限警告）は利用者判断で当面見送り、含みません。Windows実機合格とは別判定です。
 [採用範囲・検証記録](docs/validation/release-0.13.0-prep.md)と
 [Windows受入確認](docs/validation/windows-0.13.0.md)を確認してください。
 

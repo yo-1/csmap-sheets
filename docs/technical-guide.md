@@ -4,7 +4,7 @@
 
 ## 対象と参照元
 
-v0.13.0（GitHub Release公開済み・QGIS公式申請済み、管理者承認・通常版配信は未確認）、QGIS 3.44.xを対象とします。欠測・端部の方式選択とプロファイルv5を含み、既定は従来のsafe_maskです。通常版指定とWindows実機合格は別に確認します。PR #57の上限警告は含みません。
+v0.13.0（GitHub Release・QGIS公式通常版掲載を確認済み）、QGIS 3.44.xを対象とします。欠測・端部の方式選択とプロファイルv5を含み、既定は従来のsafe_maskです。通常版指定とWindows実機合格は別に確認します。PR #57の上限警告は含みません。
 
 | 参照元 | 役割 |
 |---|---|
@@ -15,6 +15,8 @@ v0.13.0（GitHub Release公開済み・QGIS公式申請済み、管理者承認�
 | [algorithm.py](../csmap_sheets/algorithm.py) | QGISパラメータ・設定優先関係 |
 | [pipeline.py](../csmap_sheets/engine/pipeline.py) | 整合・傾斜曲率・図郭処理 |
 | [color_fme.py](../csmap_sheets/engine/color_fme.py) | FME系LUT・加重和・ストレッチ |
+
+v0.13.1は空図郭スキップ修正を含む公開準備版です。既存の操作・設定プロファイルv5を維持します。公開・検証の状態は[版別記録](validation/release-0.13.1.md)を参照してください。
 
 ## 処理・座標
 
