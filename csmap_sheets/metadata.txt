@@ -10,13 +10,18 @@ about=多様な標高データから、傾斜・曲率・標高を組み合わ�
     FMEから利用できる姉妹ツール：FME CSMap Pipelineも公開しています。FMEのSystemCallerから呼び出せるツールです。 https://github.com/yo-1/fme-csmap-pipeline
     利用手順書（オンライン）：https://github.com/yo-1/csmap-sheets/blob/main/docs/user-guide.md
     English: CS Map Sheets generates CS terrain relief from elevation rasters, GSI DEMs (ZIP/XML), forestry LEM data with CSV/TXT metadata, elevation text grids, and LAS/LAZ point clouds. Choose Horn (default) or central-difference slope calculations, rendering methods, smoothing, curvature ranges, and colors. Save and reload settings as JSON. Export Japanese national base-map sheet GeoTIFFs, a merged GeoTIFF, and PNG/WebP XYZ tiles with lossy or lossless WebP compression. The companion FME CSMap Pipeline can be called from FME SystemCaller: https://github.com/yo-1/fme-csmap-pipeline
-version=0.13.0
+version=0.13.1
 author=Yoichi Wada
 email=yo-1@geographic-information.net
 homepage=https://github.com/yo-1/csmap-sheets
 tracker=https://github.com/yo-1/csmap-sheets/issues
 repository=https://github.com/yo-1/csmap-sheets
-changelog=0.13.0
+changelog=0.13.1
+    - 欠測マスク後に全透明になる図郭をスキップし、有効図郭の処理を継続。全空は失敗として診断を保存。
+    - スキップ図郭ID・理由・件数とpartial_successを記録。計算式・マスク・配色は維持。
+    - 公開連絡先メールと公開状態の文書を更新。
+
+    0.13.0
     - 欠測処理の画面・ログ名称を「境界補完」へ変更。計算とJSONの識別子は維持。
     - 処理結果の図郭索引を読込み後に枠線表示へ設定し、CS画像を隠さないよう修正。
     - 通常版（experimental=False）として登録用ZIPを準備。Windows実機確認・公式申請は別途実施。
