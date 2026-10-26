@@ -16,7 +16,7 @@ v0.13.0（GitHub Release・QGIS公式通常版掲載を確認済み）、QGIS 3.
 | [pipeline.py](../csmap_sheets/engine/pipeline.py) | 整合・傾斜曲率・図郭処理 |
 | [color_fme.py](../csmap_sheets/engine/color_fme.py) | FME系LUT・加重和・ストレッチ |
 
-v0.13.1は空図郭スキップ修正を含む公開準備版です。既存の操作・設定プロファイルv5を維持します。公開・検証の状態は[版別記録](validation/release-0.13.1.md)を参照してください。
+v0.13.1は空図郭スキップ修正を含み、GitHub Release公開済みです。QGIS公式の申請・承認・配信は別途確認します。既存の操作・設定プロファイルv5を維持します。公開・検証の状態は[版別記録](validation/release-0.13.1.md)を参照してください。
 
 ## 処理・座標
 

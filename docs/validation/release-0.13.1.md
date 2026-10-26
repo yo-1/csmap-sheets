@@ -42,3 +42,10 @@ QGIS公式へのv0.13.1申請はユーザー担当。申請・審査・通常版
 - 実ZIP検査：31ファイル、0.13.1、構造・構文・Flake8・Bandit・秘密情報検査に合格。全31エントリが作成元ソースとバイト一致。
 - 候補ZIP SHA-256：`6d9c75017f044668f731d5c7ca818c82cb9f6a410e088d09b964ef12c0df7239`。
 - PR/main CIおよび公開タグ由来ZIPは公開時に別照合する。
+
+## GitHub公開後の追記（2026-10-26）
+
+- [PR #72](https://github.com/yo-1/csmap-sheets/pull/72)マージ済み。公開タグv0.13.1は`e00d7c3a0844729a07a201e39973b2ba954c5177`。タグとReleaseは公開済み。
+- PRとマージ後mainのunit/gdal/qgis/preflightおよびPython構文CI成功。[main CI](https://github.com/yo-1/csmap-sheets/actions/runs/40313967156)。
+- [GitHub Release](https://github.com/yo-1/csmap-sheets/releases/tag/v0.13.1)。登録用ZIPの対象は上記タグ。リリースワークフローによるZIP生成・資産digest照合の最終結果は公開管理報告で記録する。
+- QGIS公式v0.13.1の申請は未実施。上記の準備時記録は当時の履歴として保持する。
