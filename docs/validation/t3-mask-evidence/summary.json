@@ -1,0 +1,103 @@
+{
+  "status": "completed",
+  "stage": "finished",
+  "sheets": {
+    "written": 2,
+    "skipped_empty": 10,
+    "skipped": [
+      {
+        "sheet_code": "09JD9999",
+        "reason": "no_valid_relief_pixels_after_mask"
+      },
+      {
+        "sheet_code": "09JE9090",
+        "reason": "no_valid_relief_pixels_after_mask"
+      },
+      {
+        "sheet_code": "09JE9091",
+        "reason": "no_valid_relief_pixels_after_mask"
+      },
+      {
+        "sheet_code": "09JE9092",
+        "reason": "no_valid_relief_pixels_after_mask"
+      },
+      {
+        "sheet_code": "09KD0909",
+        "reason": "no_valid_relief_pixels_after_mask"
+      },
+      {
+        "sheet_code": "09KE0002",
+        "reason": "no_valid_relief_pixels_after_mask"
+      },
+      {
+        "sheet_code": "09KD0919",
+        "reason": "no_valid_relief_pixels_after_mask"
+      },
+      {
+        "sheet_code": "09KE0010",
+        "reason": "no_valid_relief_pixels_after_mask"
+      },
+      {
+        "sheet_code": "09KE0011",
+        "reason": "no_valid_relief_pixels_after_mask"
+      },
+      {
+        "sheet_code": "09KE0012",
+        "reason": "no_valid_relief_pixels_after_mask"
+      }
+    ],
+    "partial_success": true
+  },
+  "valid_relief_pixels": 239271,
+  "profile_warnings": [
+    "old v4 fixture warning"
+  ],
+  "xyz": {
+    "status": "completed",
+    "scheme": "xyz",
+    "crs": "EPSG:3857",
+    "tile_size": 256,
+    "minzoom": 12,
+    "maxzoom": 12,
+    "bounds_3857": [
+      15566175.462592717,
+      4300249.27084218,
+      15567163.271551687,
+      4300621.372044272
+    ],
+    "format": "png",
+    "template": "{z}/{x}/{y}.png",
+    "encoder": {
+      "driver": "PNG",
+      "lossless": true,
+      "creation_options": []
+    },
+    "candidate_tiles": 2,
+    "written_tiles": 2,
+    "skipped_empty_tiles": 0
+  },
+  "source_sha256": "2b1f0784c161cfdce2b46b4468f76b8fe162413c6648f57bac8a36668dae5b78",
+  "source_kind": "Reconstructed geometry; not the Drive evidence TIFF",
+  "warnings": [
+    "図郭 09JD9999 をスキップ: no_valid_relief_pixels_after_mask (計1図郭)。一部の図郭成果物は出力されません。",
+    "図郭 09JE9090 をスキップ: no_valid_relief_pixels_after_mask (計2図郭)。一部の図郭成果物は出力されません。",
+    "図郭 09JE9091 をスキップ: no_valid_relief_pixels_after_mask (計3図郭)。一部の図郭成果物は出力されません。",
+    "図郭 09JE9092 をスキップ: no_valid_relief_pixels_after_mask (計4図郭)。一部の図郭成果物は出力されません。",
+    "図郭 09KD0909 をスキップ: no_valid_relief_pixels_after_mask (計5図郭)。一部の図郭成果物は出力されません。",
+    "図郭 09KE0002 をスキップ: no_valid_relief_pixels_after_mask (計6図郭)。一部の図郭成果物は出力されません。",
+    "図郭 09KD0919 をスキップ: no_valid_relief_pixels_after_mask (計7図郭)。一部の図郭成果物は出力されません。",
+    "図郭 09KE0010 をスキップ: no_valid_relief_pixels_after_mask (計8図郭)。一部の図郭成果物は出力されません。",
+    "図郭 09KE0011 をスキップ: no_valid_relief_pixels_after_mask (計9図郭)。一部の図郭成果物は出力されません。",
+    "図郭 09KE0012 をスキップ: no_valid_relief_pixels_after_mask (計10図郭)。一部の図郭成果物は出力されません。"
+  ],
+  "outputs": [
+    {
+      "file": "sheets/09KE0001.tif",
+      "sha256": "e0fd304d8a6148c5dc10b5ccc6954c3df0bdf62e274295c8d704637a17f09f1a"
+    },
+    {
+      "file": "sheets/09KE0000.tif",
+      "sha256": "b8c8478aca7b7108dd026299a5f200352ed425e3f079280fb8353817e158fb88"
+    }
+  ]
+}

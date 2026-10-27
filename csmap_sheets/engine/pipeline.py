@@ -41,7 +41,7 @@ from .input_sources import (
     prepare_inputs,
 )
 
-VERSION = "0.12.5"
+VERSION = "0.13.1"
 PLUGIN_TITLE_JA = "図郭対応CS立体図作成プラグイン（CS Map Sheets）"
 
 
@@ -116,8 +116,8 @@ SLOPE_ALGORITHMS = ("horn", "central_difference")
 SLOPE_ALGORITHM_NAMES = {"horn": "Horn法", "central_difference": "中央差分法"}
 NODATA_EDGE_MODES = ("safe_mask", "pss_approximation")
 NODATA_EDGE_MODE_NAMES = {
-    "safe_mask": "標準（欠測の影響範囲を透過）",
-    "pss_approximation": "PSS互換を目指す（計算用補完）",
+    "safe_mask": "標準：欠測の影響範囲を透過",
+    "pss_approximation": "境界補完：計算時のみ端部・欠測近傍を補完",
 }
 
 
@@ -129,7 +129,7 @@ def profile_nodata_edge_mode(saved, chosen):
     if chosen != "safe_mask":
         warning = (
             "この設定プロファイルには欠測・端部の処理方式（nodata_edge_mode）がないため、"
-            "標準（safe_mask）として読みます。画面のPSS近似の選択は適用しません。"
+            "標準（safe_mask）として読みます。画面の境界補完の選択は適用しません。"
         )
     return "safe_mask", warning
 
@@ -957,6 +957,10 @@ def check_sources(c, gdal, osr, feedback=None):
     return records
 
 
+class EmptyReliefError(ValueError):
+    """The rendered raster has no nontransparent relief pixels."""
+
+
 def make_relief(dem_path, output_path, c, gdal, feedback=None):
     src = gdal.Open(str(dem_path))
     w, h = src.RasterXSize, src.RasterYSize
@@ -1026,9 +1030,9 @@ def make_relief(dem_path, output_path, c, gdal, feedback=None):
             25 + 50 * min(y + block, h) / h,
         )
     dst.FlushCache()
-    dst = src = None
+    band = dst = src = None
     if valid_count == 0:
-        raise ValueError(
+        raise EmptyReliefError(
             "No valid relief pixels: check DEM c"
             "overage, NoData and smoothing radiu"
             "s"
@@ -1036,7 +1040,9 @@ def make_relief(dem_path, output_path, c, gdal, feedback=None):
     return valid_count
 
 
-def render_sheets(projected_path, out, c, gdal, ogr, osr, feedback=None):
+def render_sheets(
+    projected_path, out, c, gdal, ogr, osr, feedback=None, summary=None
+):
     "Render directly from a virtual province mosaic, one map sheet at a time."
     src = gdal.Open(str(projected_path))
     gt = src.GetGeoTransform()
@@ -1077,7 +1083,27 @@ def render_sheets(projected_path, out, c, gdal, ogr, osr, feedback=None):
     )
     halo = gaussian_sigma(c)[1] + 1
     written = []
-    skipped = 0
+    if summary is None:
+        summary = {}
+    summary.update(
+        written=0, skipped_empty=0, skipped=[], partial_success=False
+    )
+
+    def skip_sheet(sheet, reason):
+        summary["skipped_empty"] += 1
+        summary["skipped"].append(dict(sheet_code=sheet.code, reason=reason))
+        summary["partial_success"] = summary["written"] > 0
+        message = (
+            f"図郭 {sheet.code} をスキップ: {reason} "
+            f"(計{summary['skipped_empty']}図郭)。"
+            "一部の図郭成果物は出力されません。"
+        )
+        check_cancel(feedback)
+        if feedback is not None and hasattr(feedback, "pushWarning"):
+            feedback.pushWarning(message)
+        else:
+            report(feedback, "WARNING: " + message)
+
     valid_total = 0
     for number, sheet in enumerate(candidates, 1):
         check_cancel(feedback)
@@ -1125,12 +1151,18 @@ def render_sheets(projected_path, out, c, gdal, ogr, osr, feedback=None):
                 coverage += int(
                     np.count_nonzero(np.isfinite(a) & (a != NODATA))
                 )
-        dem = None
+        band = dem = None
         if coverage == 0:
             dem_path.unlink(missing_ok=True)
-            skipped += 1
+            skip_sheet(sheet, "no_dem_coverage")
             continue
-        make_relief(dem_path, relief_path, c, gdal, feedback)
+        try:
+            make_relief(dem_path, relief_path, c, gdal, feedback)
+        except EmptyReliefError:
+            dem_path.unlink(missing_ok=True)
+            relief_path.unlink(missing_ok=True)
+            skip_sheet(sheet, "no_valid_relief_pixels_after_mask")
+            continue
         dest = sheets_dir / (sheet.code + ".tif")
         rgba = gdal.Open(str(relief_path))
         tile = gdal.Translate(
@@ -1168,7 +1200,7 @@ def render_sheets(projected_path, out, c, gdal, ogr, osr, feedback=None):
         relief_path.unlink(missing_ok=True)
         if count == 0:
             dest.unlink(missing_ok=True)
-            skipped += 1
+            skip_sheet(sheet, "no_valid_pixels_in_sheet")
             continue
         tfw = (
             c["cell_size"],
@@ -1207,6 +1239,8 @@ def render_sheets(projected_path, out, c, gdal, ogr, osr, feedback=None):
             raise RuntimeError("Failed to write sheet index")
         feature = None
         written.append(str(dest))
+        summary["written"] = len(written)
+        summary["partial_success"] = summary["skipped_empty"] > 0
         valid_total += count
         report(
             feedback,
@@ -1222,7 +1256,10 @@ def render_sheets(projected_path, out, c, gdal, ogr, osr, feedback=None):
     except OSError:
         pass
     if not written:
-        raise ValueError("No nonempty sheets produced")
+        raise ValueError(
+            "No nonempty sheets produced: all candidate sheets have no valid "
+            "pixels after DEM coverage and relief-mask checks"
+        )
     mosaic = out / "cs_relief.vrt"
     vrt = gdal.BuildVRT(
         str(mosaic), written, resolution="highest", strict=True
@@ -1233,7 +1270,7 @@ def render_sheets(projected_path, out, c, gdal, ogr, osr, feedback=None):
     vrt = None
     return (
         str(mosaic),
-        dict(written=len(written), skipped_empty=skipped),
+        summary,
         valid_total,
     )
 
@@ -1472,9 +1509,13 @@ def run(c, feedback=None, profile_warnings=()):
             }
             save()
         manifest["stage"] = "sheet_streaming"
+        manifest["sheets"] = {}
         save()
         cs_mosaic, manifest["sheets"], manifest["valid_relief_pixels"] = (
-            render_sheets(projected_path, out, c, gdal, ogr, osr, feedback)
+            render_sheets(
+                projected_path, out, c, gdal, ogr, osr, feedback,
+                summary=manifest["sheets"],
+            )
         )
         if c.get("merged_geotiff_enabled", True):
             check_cancel(feedback)

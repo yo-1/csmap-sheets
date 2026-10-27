@@ -4,9 +4,14 @@ import json
 from pathlib import Path
 import uuid
 from qgis.PyQt.QtGui import QColor
+from qgis.PyQt import sip
 from qgis.core import (
     Qgis,
     QgsProcessing,
+    QgsProcessingLayerPostProcessorInterface,
+    QgsFillSymbol,
+    QgsSingleSymbolRenderer,
+    QgsVectorLayer,
     QgsProcessingAlgorithm,
     QgsProcessingException,
     QgsProcessingParameterMultipleLayers,
@@ -27,6 +32,43 @@ from qgis.core import (
     QgsProcessingParameterString,
     QgsCoordinateReferenceSystem,
 )
+
+
+class _SheetIndexPostProcessor(QgsProcessingLayerPostProcessorInterface):
+    """Apply outline-only styling after Processing's configured defaults."""
+
+    # Processing executes a cloned algorithm, which is destroyed before loading
+    # results. Keep the Python override alive independently of that clone.
+    _pending = []
+
+    @classmethod
+    def create(cls):
+        cls._pending[:] = [p for p in cls._pending if not sip.isdeleted(p)]
+        processor = cls()
+        cls._pending.append(processor)
+        return processor
+
+    def postProcessLayer(self, layer, context, feedback):
+        try:
+            self._apply(layer)
+        finally:
+            if self in self._pending:
+                self._pending.remove(self)
+
+    @staticmethod
+    def _apply(layer):
+        if isinstance(layer, QgsVectorLayer):
+            symbol = QgsFillSymbol.createSimple({
+                "style": "no",
+                "outline_style": "solid",
+                "outline_color": "60,60,60,255",
+                "outline_width": "0.2",
+                "outline_width_unit": "MM",
+                "joinstyle": "miter",
+            })
+            layer.setRenderer(QgsSingleSymbolRenderer(symbol))
+            layer.triggerRepaint()
+
 
 # v0.9.3: 個別ファイル選択（FILESパラメータ）の件数上限。QGIS自身の
 # Processingフレームワークが実行時に選択件数分のレイヤー解決を試みる挙動により、
@@ -210,8 +252,8 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             ".5m格子で1.5m、1m格子で3m、2m格子で6mに相当します。"
             "方式ごとに値を保持し、選んだ方式の値だけを使います。組込みのFME設定プロファイルはm方式3mを使います。"
             "\n欠測・端部の処理は、従来どおり影響範囲を透過する標準方式（既定）と、計算時だけ端値延長・"
-            "中心値代用を行うPSS配布FMEワークスペース（以下PSS）の互換を目指す方式から選べます。"
-            "後者も欠測中心は透明で、完全一致を保証するものではありません。欠測縁の傾斜は小さく出ます。"
+            "中心値代用を行う境界補完方式から選べます。"
+            "境界補完でも欠測中心は透明のままで、元の標高データは変更しません。欠測縁の傾斜は小さく出ます。"
             "補完値を標高として扱わないでください。"
             "\n県全域は図郭単位で処理し、全域をメモリーへ展開しません。系番号は選択した平面直角座標系から自動決定します。"
             "\n設定プロファイルは処理設定をJSONで保存・読込みできます。入力・出力・CRS・確認欄は安全のため保存対象外です。"
@@ -609,8 +651,8 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 "NODATA_EDGE_MODE",
                 "欠測・端部の処理方式",
                 [
-                    "標準（欠測の影響範囲を透過。既定・従来互換）",
-                    "PSS互換を目指す（計算用補完。端値延長・近傍欠測を中心値で代用）",
+                    "標準：欠測の影響範囲を透過",
+                    "境界補完：計算時のみ端部・欠測近傍を補完",
                 ],
                 defaultValue=0,
             )
@@ -1592,10 +1634,12 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 ("CS_IMAGE", "CS方式立体図"),
                 ("SHEET_INDEX", "CS出力図郭"),
             ]:
-                context.addLayerToLoadOnCompletion(
-                    outputs[key],
-                    QgsProcessingContext.LayerDetails(
-                        label, context.project(), key
-                    ),
+                details = QgsProcessingContext.LayerDetails(
+                    label, context.project(), key
                 )
+                context.addLayerToLoadOnCompletion(outputs[key], details)
+                if key == "SHEET_INDEX":
+                    context.layerToLoadOnCompletionDetails(
+                        outputs[key]
+                    ).setPostProcessor(_SheetIndexPostProcessor.create())
         return outputs

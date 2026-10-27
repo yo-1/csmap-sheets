@@ -2,7 +2,7 @@
 name=CS Map Sheets
 qgisMinimumVersion=3.44
 qgisMaximumVersion=3.99
-description=多様な標高データからCS立体図を作成し、図郭別・結合GeoTIFFとPNG/WebPのXYZタイルを出力します。
+description=多様な標高データからCS立体図を作成し、図郭別・結合GeoTIFFとPNG/WebPのXYZタイルを出力します。 / Generate CS terrain relief, map-sheet and merged GeoTIFFs, and XYZ tiles.
 about=多様な標高データから、傾斜・曲率・標高を組み合わせたCS立体図を作成するQGISプラグインです。
     多様な入力に対応：GeoTIFFなどの標高ラスタ、国土地理院の数値標高モデル（ZIP/XML）、森林航空レーザ成果のLEM＋CSV/TXT、標高テキスト、LAS/LAZ点群を利用できます。
     計算方式・パラメータを選択：傾斜計算はHorn法（既定）・中央差分法から選択できます。描画方式、平滑化、曲率の範囲、配色なども調整でき、設定をJSONで保存・再利用できます。
@@ -10,13 +10,27 @@ about=多様な標高データから、傾斜・曲率・標高を組み合わ�
     FMEから利用できる姉妹ツール：FME CSMap Pipelineも公開しています。FMEのSystemCallerから呼び出せるツールです。 https://github.com/yo-1/fme-csmap-pipeline
     利用手順書（オンライン）：https://github.com/yo-1/csmap-sheets/blob/main/docs/user-guide.md
     English: CS Map Sheets generates CS terrain relief from elevation rasters, GSI DEMs (ZIP/XML), forestry LEM data with CSV/TXT metadata, elevation text grids, and LAS/LAZ point clouds. Choose Horn (default) or central-difference slope calculations, rendering methods, smoothing, curvature ranges, and colors. Save and reload settings as JSON. Export Japanese national base-map sheet GeoTIFFs, a merged GeoTIFF, and PNG/WebP XYZ tiles with lossy or lossless WebP compression. The companion FME CSMap Pipeline can be called from FME SystemCaller: https://github.com/yo-1/fme-csmap-pipeline
-version=0.12.5
+version=0.13.1
 author=Yoichi Wada
-email=yoh@mail.pippin-itabashi.net
+email=yo-1@geographic-information.net
 homepage=https://github.com/yo-1/csmap-sheets
 tracker=https://github.com/yo-1/csmap-sheets/issues
 repository=https://github.com/yo-1/csmap-sheets
-changelog=0.12.5
+changelog=0.13.1
+    - 欠測マスク後に全透明になる図郭をスキップし、有効図郭の処理を継続。全空は失敗として診断を保存。
+    - スキップ図郭ID・理由・件数とpartial_successを記録。計算式・マスク・配色は維持。
+    - 公開連絡先メールと公開状態の文書を更新。
+
+    0.13.0
+    - 欠測処理の画面・ログ名称を「境界補完」へ変更。計算とJSONの識別子は維持。
+    - 処理結果の図郭索引を読込み後に枠線表示へ設定し、CS画像を隠さないよう修正。
+    - 通常版（experimental=False）として登録用ZIPを準備。Windows実機確認・公式申請は別途実施。
+    - 欠測・端部の処理方式を選べる設定を追加。既定は従来どおりの標準（safe_mask）で、既定の出力はv0.12.5と同じ。選択は近似であり、PSSとの完全一致ではない。
+    - 設定プロファイルの形式をv5へ更新。v5のプロファイルは0.12.0以前の版では読めない。旧形式のプロファイルは読み込める。
+    - 利用手順書・推奨設定をMarkdown正本として整備し、処理画面のヘルプから参照できるようにした。
+    - 公式リポジトリの説明（description）を英語・日本語の併記にした。
+
+    0.12.5
     - Python 3.11で構文エラーになるf文字列を修正。出力文字列・計算・既定値は0.12.4と同じ。
 
     0.12.4
@@ -133,6 +147,6 @@ changelog=0.12.5
     Copyright (C) 2026 Yoichi Wada. GNU GPL v3.0 only.
 category=Raster
 hasProcessingProvider=yes
-experimental=True
+experimental=False
 deprecated=False
 icon=icon.svg
