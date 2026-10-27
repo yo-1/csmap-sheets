@@ -1458,6 +1458,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 ) from exc
             from .engine.pipeline import (
                 merge_settings_profile,
+                profile_limit_warnings,
                 profile_nodata_edge_mode,
             )
 
@@ -1475,6 +1476,9 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             if warning:
                 self.profile_warnings.append(warning)
                 feedback.pushWarning(warning)
+            for limit_warning in profile_limit_warnings(saved):
+                self.profile_warnings.append(limit_warning)
+                feedback.pushWarning(limit_warning)
             if "sigma_unit" not in saved:
                 # v0.12.0より前のプロファイルはσを地上距離（m）で保存している。画面の選択に
                 # かかわらずm方式で読み、過去の計算条件を再現する。
