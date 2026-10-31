@@ -124,7 +124,7 @@ PARAMETER_SECTIONS = {
         "METRES",
         "NODATA",
     ),
-    "点群": (
+    "点群（LAS・LAZ）": (
         "LIDAR_MODE",
         "GROUND_CLASSES",
         "PDAL",
@@ -138,7 +138,7 @@ PARAMETER_SECTIONS = {
         "SMRF_SCALAR",
         "SMRF_WINDOW",
     ),
-    "テキスト": (
+    "テキスト（XYZ・CSV）": (
         "TEXT_MODE",
         "TEXT_DELIMITER",
         "TEXT_ENCODING",
@@ -147,7 +147,12 @@ PARAMETER_SECTIONS = {
         "TEXT_AXES",
         "TEXT_CELL",
     ),
-    "森林レーザ": ("FOREST_AXES", "FOREST_CELL", "LEM_SCALE", "FOREST_NODATA"),
+    "森林レーザ（LEM・CSV格子・TIFF）": (
+        "FOREST_AXES",
+        "FOREST_CELL",
+        "LEM_SCALE",
+        "FOREST_NODATA",
+    ),
     "出力・図郭": ("CRS", "LEVEL", "CELL"),
     "地形計算": (
         "SIGMA_UNIT",
@@ -180,8 +185,8 @@ PARAMETER_SECTIONS = {
 }
 # 区分名と重なる既存の接頭辞は外す（例：「テキスト：区切り文字」→「【テキスト】区切り文字」）
 SECTION_REDUNDANT_PREFIXES = {
-    "テキスト": ("テキスト：",),
-    "森林レーザ": ("森林航空レーザCSV：",),
+    "テキスト（XYZ・CSV）": ("テキスト：",),
+    "森林レーザ（LEM・CSV格子・TIFF）": ("森林航空レーザCSV：",),
 }
 
 
@@ -233,6 +238,12 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             "oTIFF→XYZタイル（EPSG:3857、PNGまたはWebP）。"
             "入力形式を選び、ファイルまたはフォルダーを指定します。LAS/LAZと不規則テキスト点には外部PDAL 2.9以降が必要です。"
             "\n入力形式に関係する設定だけを使用します。標高ラスタ（DEM）欄は入力形式が標高ラスタのときだけ使用します。"
+            "\n入力形式と使う区分の対応：標高ラスタと国土地理院DEMは【入力】、"
+            "標高テキストは【入力】と【テキスト（XYZ・CSV）】、"
+            "レーザ点群は【入力】と【点群（LAS・LAZ）】、"
+            "森林航空レーザ成果は【入力】と"
+            "【森林レーザ（LEM・CSV格子・TIFF）】を使います。"
+            "そのほかの区分は全形式で共通です。"
             "森林航空レーザ成果はLEM、"
             "CSV/XYZ格子、TIFF+TFW、GeoTIFFとZIPを自動判別"
             "します。"
@@ -346,7 +357,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterMultipleLayers(
                 "DEMS",
-                "読込み済み標高ラスタを使う場合（省略可）",
+                "読込み済み標高ラスタを使う場合（省略可、標高ラスタ形式のみ）",
                 QgsProcessing.SourceType.TypeRaster,
                 optional=True,
             )
