@@ -481,6 +481,25 @@ class QgisTests(unittest.TestCase):
                 "NODATA_EDGE_MODE",
             ],
         )
+        # Issue #45 案A: 形式別の区分名に対象形式を併記する
+        self.assertTrue(
+            alg.parameterDefinition("LIDAR_MODE")
+            .description()
+            .startswith("【点群（LAS・LAZ）】")
+        )
+        self.assertTrue(
+            alg.parameterDefinition("TEXT_MODE")
+            .description()
+            .startswith("【テキスト（XYZ・CSV）】")
+        )
+        self.assertTrue(
+            alg.parameterDefinition("FOREST_AXES")
+            .description()
+            .startswith("【森林レーザ（LEM・CSV格子・TIFF）】")
+        )
+        self.assertIn(
+            "標高ラスタ形式のみ", alg.parameterDefinition("DEMS").description()
+        )
 
 
 if __name__ == "__main__":
