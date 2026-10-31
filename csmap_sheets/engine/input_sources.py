@@ -325,6 +325,28 @@ INPUT_TYPE_NAMES = {
     "lidar": "レーザ点群（LAS・LAZ）",
     "forest": "森林航空レーザ成果（LEM・CSV格子・TIFF・GeoTIFF・ZIP）",
 }
+
+
+def dems_ignored_message(input_type, dems_specified):
+    """DEM欄が指定されているのに選択中の入力形式では使われない場合の案内文。
+
+    Issue #71：標高ラスタ以外の形式では DEMS 欄は処理対象にならない。
+    選択形式側の入力（ファイル／フォルダー）が空で処理を進められない
+    ときに、一般的な「入力を指定してください」ではなく不整合そのものを
+    案内する。該当しない場合は None（呼び出し側は従来の案内を使う）。
+    設定は自動で切り替えない。
+    """
+    if input_type == "raster" or not dems_specified:
+        return None
+    return (
+        "標高ラスタ（DEM）が指定されていますが、現在の入力形式"
+        f"「{INPUT_TYPE_NAMES[input_type]}」では使用されません。"
+        "入力形式を「標高ラスタ（GeoTIFF・IMG・ASC）」に変更するか、"
+        "選択した入力形式に対応するファイルまたはフォルダーを"
+        "指定してください。"
+    )
+
+
 # 拡張子の区分：(表示名, 選び直す候補の入力形式)。1つの拡張子が複数の形式で使われるものは候補を併記する。
 GUIDANCE_GROUPS = (
     ("gsi", (".xml", ".zip"), "国土地理院DEMの候補", ("gsi", "forest")),
