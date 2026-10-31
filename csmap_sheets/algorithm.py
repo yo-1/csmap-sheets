@@ -232,7 +232,8 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             "複数DEM→平面直角座標系へ整合→独自CS方式画像→国土基本図図郭Ge"
             "oTIFF→XYZタイル（EPSG:3857、PNGまたはWebP）。"
             "入力形式を選び、ファイルまたはフォルダーを指定します。LAS/LAZと不規則テキスト点には外部PDAL 2.9以降が必要です。"
-            "\n入力形式に関係する設定だけを使用します。森林航空レーザ成果はLEM、"
+            "\n入力形式に関係する設定だけを使用します。標高ラスタ（DEM）欄は入力形式が標高ラスタのときだけ使用します。"
+            "森林航空レーザ成果はLEM、"
             "CSV/XYZ格子、TIFF+TFW、GeoTIFFとZIPを自動判別"
             "します。"
             "地理院ZIPは自動読込み、LASは分類方法を選択します。"
@@ -1042,8 +1043,18 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             if str(Path(path).resolve()) not in paths:
                 paths.append(str(Path(path).resolve()))
         if not paths:
+            # Issue #71: DEMS欄が指定されているのに標高ラスタ以外の形式が
+            # 選ばれている場合、そのDEMは処理対象にならない。一般的な
+            # 「入力を指定してください」ではなく不整合を案内する。
+            from .engine.input_sources import dems_ignored_message
+
+            raw_dems = parameters.get("DEMS")
+            dems_specified = not QgsVariantUtils.isNull(
+                raw_dems
+            ) and raw_dems not in ("", [])
             raise QgsProcessingException(
-                "入力ファイルまたはフォルダーを指定してください。"
+                dems_ignored_message(mode, dems_specified)
+                or "入力ファイルまたはフォルダーを指定してください。"
             )
         source = self.parameterAsCrs(parameters, "INPUT_CRS", context)
         source_value = parameters.get("INPUT_CRS")

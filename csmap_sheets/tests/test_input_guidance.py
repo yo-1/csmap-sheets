@@ -156,5 +156,30 @@ class InputTypeGuidanceTests(unittest.TestCase):
         )
 
 
+class DemsIgnoredMessageTests(unittest.TestCase):
+    """Issue #71: DEM欄が標高ラスタ以外の形式で無視される場合の案内。"""
+
+    def test_forest_with_dems_gets_specific_message(self):
+        text = inputs.dems_ignored_message("forest", True)
+        self.assertIn("使用されません", text)
+        self.assertIn(
+            "森林航空レーザ成果（LEM・CSV格子・TIFF・GeoTIFF・ZIP）", text
+        )
+        self.assertIn("標高ラスタ（GeoTIFF・IMG・ASC）", text)
+
+    def test_other_non_raster_types_also_get_message(self):
+        for input_type in ("gsi", "text", "lidar"):
+            text = inputs.dems_ignored_message(input_type, True)
+            self.assertIn("使用されません", text)
+            self.assertIn(inputs.INPUT_TYPE_NAMES[input_type], text)
+
+    def test_raster_with_dems_is_normal(self):
+        self.assertIsNone(inputs.dems_ignored_message("raster", True))
+
+    def test_no_dems_means_no_specific_message(self):
+        for input_type in ("gsi", "text", "lidar", "forest"):
+            self.assertIsNone(inputs.dems_ignored_message(input_type, False))
+
+
 if __name__ == "__main__":
     unittest.main()
