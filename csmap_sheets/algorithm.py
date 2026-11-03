@@ -819,7 +819,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             QgsProcessingParameterEnum(
                 "XYZ_FORMAT",
                 "XYZ画像形式",
-                ["PNG", "WebP（要GDAL WEBPドライバ）"],
+                ["PNG", "WebP（要GDAL WEBPドライバ）", "MBTiles（PNG、単一ファイル）"],
                 defaultValue=0,
             )
         )
@@ -1391,7 +1391,7 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
                 parameters, "ELEV_MARGIN", context
             ),
             xyz_enabled=self.parameterAsBool(parameters, "XYZ", context),
-            xyz_format=["png", "webp"][
+            xyz_format=["png", "webp", "mbtiles"][
                 self.parameterAsEnum(parameters, "XYZ_FORMAT", context)
             ],
             xyz_webp_lossless=self.parameterAsBool(

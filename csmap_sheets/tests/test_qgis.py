@@ -419,12 +419,13 @@ class QgisTests(unittest.TestCase):
         ):
             self.assertIsNotNone(alg.parameterDefinition(key))
         # XYZ_FORMAT defaults to PNG; WebP is opt-in (handover doc 2026-09-27,
-        # section 3).
+        # section 3). MBTiles was added as a third option in v0.14.0
+        # (Issue #63); the default stays PNG.
         self.assertEqual(
             alg.parameterDefinition("XYZ_FORMAT").defaultValue(), 0
         )
         self.assertEqual(
-            len(alg.parameterDefinition("XYZ_FORMAT").options()), 2
+            len(alg.parameterDefinition("XYZ_FORMAT").options()), 3
         )
         # WebPは既定で非可逆(lossy)（v0.12.0、ユーザー決定2026-10-04。v0.11.0までは可逆が既定）。
         self.assertEqual(
