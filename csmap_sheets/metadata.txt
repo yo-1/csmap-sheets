@@ -19,6 +19,9 @@ repository=https://github.com/yo-1/csmap-sheets
 changelog=0.14.0
     - 全域CS方式画像のCOG（Cloud Optimized GeoTIFF）追加出力（既定オフ）。QField等のモバイル向け。
     - XYZタイルの出力形式にMBTiles（PNG、単一ファイル）を追加（既定はPNGフォルダー）。
+    - フォームの区分名に対象形式を併記し、DEM欄の適用範囲を明記（Issue #45 整理案A）。
+    - 入力形式が異なる場合にDEMが使われない理由を具体的に案内（Issue #71）。
+    - 外部JSONプロファイルが処理上限を既定より大きく設定している場合に警告（PR #57）。
     - 設定プロファイルの形式をv6へ更新。v5のプロファイルも読み込める。
 
     0.13.1
