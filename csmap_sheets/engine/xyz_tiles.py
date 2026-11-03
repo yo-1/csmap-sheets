@@ -1,13 +1,14 @@
 'Serial GDAL XYZ tile writer (PNG or' \
-    ' WebP); no external process or gdal' \
-    '2tiles dependency.'
+    ' WebP folder, or MBTiles); no external' \
+    ' process or gdal2tiles dependency.'
 
 import json
 import math
 from pathlib import Path
+import sqlite3
 
 HALF_WORLD = math.pi * 6378137.0
-XYZ_FORMATS = ("png", "webp")
+XYZ_FORMATS = ("png", "webp", "mbtiles")
 # WebP creation options per the GDAL WEBP driver (gdal.org): QUALITY is 1-100
 # (driver
 # default 75), LOSSLESS is TRUE/FALSE (driver default FALSE). Up to v0.11.0 the
@@ -207,14 +208,117 @@ def precheck_xyz_tile_count(path, c, gdal, osr):
     return total
 
 
+def mbtiles_tile_row(z, y_xyz):
+    """MBTiles stores TMS rows: flipped against the XYZ y index."""
+    return (1 << z) - 1 - y_xyz
+
+
+def mbtiles_metadata(bounds, min_zoom, max_zoom):
+    """MBTiles metadata rows; bounds are converted to WGS84 lon/lat.
+
+    Uses the analytic EPSG:3857 inverse instead of an OSR transform so
+    that bounds sitting exactly on the world edge (lon +/-180, the max
+    Mercator latitude) convert exactly instead of failing.
+    """
+    radius = 6378137.0
+    west = math.degrees(bounds[0] / radius)
+    east = math.degrees(bounds[2] / radius)
+    south = math.degrees(math.atan(math.sinh(bounds[1] / radius)))
+    north = math.degrees(math.atan(math.sinh(bounds[3] / radius)))
+    return {
+        "name": "CS Map Sheets - CS relief",
+        "type": "baselayer",
+        "format": "png",
+        "bounds": f"{west:.6f},{south:.6f},{east:.6f},{north:.6f}",
+        "minzoom": str(min_zoom),
+        "maxzoom": str(max_zoom),
+    }
+
+
+class MbtilesWriter:
+    """Single-file MBTiles (PNG tiles) writer (Issue #63).
+
+    Tiles accumulate in a temporary sibling file; the final name only
+    appears once every tile succeeded, so a cancelled or failed run
+    never leaves an unreadable partial file under the final name. All
+    writes happen on this single connection (single-threaded by design).
+    """
+
+    def __init__(self, final_path, metadata):
+        self._final = Path(final_path)
+        self._tmp = self._final.with_name(self._final.name + ".part")
+        if self._tmp.exists():
+            self._tmp.unlink()
+        self._conn = sqlite3.connect(str(self._tmp))
+        self._conn.execute(
+            "CREATE TABLE metadata (name text, value text)"
+        )
+        self._conn.execute(
+            "CREATE TABLE tiles (zoom_level integer,"
+            " tile_column integer, tile_row integer, tile_data blob)"
+        )
+        self._conn.execute(
+            "CREATE UNIQUE INDEX tile_index ON tiles"
+            " (zoom_level, tile_column, tile_row)"
+        )
+        self._conn.executemany(
+            "INSERT INTO metadata VALUES (?, ?)",
+            sorted(metadata.items()),
+        )
+        self._conn.commit()
+
+    def add(self, z, x, y_xyz, data):
+        self._conn.execute(
+            "INSERT INTO tiles VALUES (?, ?, ?, ?)",
+            (z, x, mbtiles_tile_row(z, y_xyz), sqlite3.Binary(data)),
+        )
+
+    def finalize(self):
+        self._conn.commit()
+        self._conn.close()
+        self._conn = None
+        self._tmp.replace(self._final)
+        return self._final
+
+    def abort(self):
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+        if self._tmp.exists():
+            self._tmp.unlink()
+
+
+def _read_vsimem_bytes(gdal, path):
+    handle = gdal.VSIFOpenL(path, "rb")
+    if handle is None:
+        raise RuntimeError("VSIMEM read failed: " + path)
+    try:
+        gdal.VSIFSeekL(handle, 0, 2)
+        size = gdal.VSIFTellL(handle)
+        gdal.VSIFSeekL(handle, 0, 0)
+        data = gdal.VSIFReadL(1, size, handle)
+    finally:
+        gdal.VSIFCloseL(handle)
+    gdal.Unlink(path)
+    if data is None or len(data) != size:
+        raise RuntimeError("VSIMEM read failed: " + path)
+    return data
+
+
 def write_xyz(source, destination, c, gdal, osr, feedback=None):
     validate_xyz({**DEFAULTS, **c})
     c = {**DEFAULTS, **c}
     # Fail fast, before any output is created, if the requested encoder is
     # unavailable.
+    mbtiles = c["xyz_format"] == "mbtiles"
     driver, ext, creation_options, encoder = _tile_encoder(
-        c["xyz_format"], gdal, c["xyz_webp_lossless"], c["xyz_webp_quality"]
+        "png" if mbtiles else c["xyz_format"],
+        gdal,
+        c["xyz_webp_lossless"],
+        c["xyz_webp_quality"],
     )
+    if mbtiles:
+        encoder = {**encoder, "container": "mbtiles"}
 
     def cancel():
         if feedback is not None and feedback.isCanceled():
@@ -275,6 +379,8 @@ def write_xyz(source, destination, c, gdal, osr, feedback=None):
         written_tiles=0,
         skipped_empty_tiles=0,
     )
+    if mbtiles:
+        info["container"] = "cs_relief.mbtiles"
 
     def save():
         (out / "xyz.json").write_text(
@@ -282,7 +388,15 @@ def write_xyz(source, destination, c, gdal, osr, feedback=None):
         )
 
     save()
+    writer = None
     try:
+        if mbtiles:
+            writer = MbtilesWriter(
+                out / "cs_relief.mbtiles",
+                mbtiles_metadata(
+                    bounds, c["xyz_min_zoom"], c["xyz_max_zoom"]
+                ),
+            )
         done = 0
         for z, (x0, x1, y0, y1) in ranges:
             for x in range(x0, x1 + 1):
@@ -315,8 +429,6 @@ def write_xyz(source, destination, c, gdal, osr, feedback=None):
                     if pixels is None:
                         raise RuntimeError("XYZ pixel read failed")
                     if pixels[3].any():
-                        folder = out / str(z) / str(x)
-                        folder.mkdir(parents=True, exist_ok=True)
                         # Plain image dataset avoids sidecar georeferencing
                         # files.
                         plain = gdal.GetDriverByName("MEM").Create(
@@ -333,15 +445,39 @@ def write_xyz(source, destination, c, gdal, osr, feedback=None):
                             band = plain.GetRasterBand(i + 1)
                             band.WriteArray(pixels[i])
                             band.SetColorInterpretation(ci)
-                        written = driver.CreateCopy(
-                            str(folder / f"{y}.{ext}"),
-                            plain,
-                            options=creation_options,
-                        )
-                        if written is None:
-                            raise RuntimeError(f"{ext.upper()} write failed")
-                        written.FlushCache()
-                        written = plain = None
+                        if writer is not None:
+                            written = driver.CreateCopy(
+                                "/vsimem/csmap_mbtiles_tile.png",
+                                plain,
+                                options=creation_options,
+                            )
+                            if written is None:
+                                raise RuntimeError("PNG write failed")
+                            written.FlushCache()
+                            written = None
+                            writer.add(
+                                z,
+                                x,
+                                y,
+                                _read_vsimem_bytes(
+                                    gdal, "/vsimem/csmap_mbtiles_tile.png"
+                                ),
+                            )
+                        else:
+                            folder = out / str(z) / str(x)
+                            folder.mkdir(parents=True, exist_ok=True)
+                            written = driver.CreateCopy(
+                                str(folder / f"{y}.{ext}"),
+                                plain,
+                                options=creation_options,
+                            )
+                            if written is None:
+                                raise RuntimeError(
+                                    f"{ext.upper()} write failed"
+                                )
+                            written.FlushCache()
+                            written = None
+                        plain = None
                         info["written_tiles"] += 1
                     else:
                         info["skipped_empty_tiles"] += 1
@@ -362,10 +498,16 @@ def write_xyz(source, destination, c, gdal, osr, feedback=None):
             raise ValueError(
                 "No visible XYZ tiles; choose a higher zoom or check alpha"
             )
+        if writer is not None:
+            writer.finalize()
+            writer = None
         info["status"] = "completed"
         save()
         return info
     except BaseException as exc:
+        if writer is not None:
+            writer.abort()
+            writer = None
         info.update(
             status="cancelled"
             if feedback is not None and feedback.isCanceled()
@@ -384,7 +526,7 @@ def build_cli_parser():
     import argparse
 
     p = argparse.ArgumentParser(
-        description="Existing CS RGBA GeoTIFF -> XYZ PNG/WebP"
+        description="Existing CS RGBA GeoTIFF -> XYZ PNG/WebP or MBTiles"
     )
     p.add_argument("--input", required=True)
     p.add_argument(

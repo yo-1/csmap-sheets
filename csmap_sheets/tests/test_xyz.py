@@ -403,3 +403,192 @@ class XYZTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MbtilesTests(unittest.TestCase):
+    def test_tile_row_is_tms_flipped(self):
+        from csmap_sheets.engine.xyz_tiles import mbtiles_tile_row
+
+        self.assertEqual(mbtiles_tile_row(0, 0), 0)
+        self.assertEqual(mbtiles_tile_row(1, 0), 1)
+        self.assertEqual(mbtiles_tile_row(1, 1), 0)
+        self.assertEqual(mbtiles_tile_row(12, 100), (1 << 12) - 1 - 100)
+
+    def test_validate_accepts_mbtiles(self):
+        validate_xyz({**DEFAULTS, "xyz_format": "mbtiles"})
+
+    def test_writer_finalize_and_abort(self):
+        import sqlite3
+
+        from csmap_sheets.engine.xyz_tiles import MbtilesWriter
+
+        meta = {"name": "x", "format": "png", "bounds": "0,0,1,1"}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            writer = MbtilesWriter(root / "a.mbtiles", meta)
+            writer.add(1, 0, 0, b"\x89PNG\r\n\x1a\nfake")
+            writer.finalize()
+            final = root / "a.mbtiles"
+            self.assertTrue(final.exists())
+            self.assertFalse((root / "a.mbtiles.part").exists())
+            conn = sqlite3.connect(str(final))
+            rows = conn.execute(
+                "SELECT zoom_level, tile_column, tile_row FROM tiles"
+            ).fetchall()
+            self.assertEqual(rows, [(1, 0, 1)])
+            stored = dict(conn.execute("SELECT name, value FROM metadata"))
+            self.assertEqual(stored["format"], "png")
+            conn.close()
+            writer2 = MbtilesWriter(root / "b.mbtiles", meta)
+            writer2.add(1, 0, 0, b"\x89PNG\r\n\x1a\nfake")
+            writer2.abort()
+            self.assertFalse((root / "b.mbtiles").exists())
+            self.assertFalse((root / "b.mbtiles.part").exists())
+
+    def _world_source(self, root, gdal, osr):
+        src = root / "rgba.tif"
+        ds = gdal.GetDriverByName("GTiff").Create(
+            str(src), 256, 256, 4, gdal.GDT_Byte
+        )
+        h = HALF_WORLD
+        ds.SetGeoTransform((-h, h / 256, 0, h, 0, -h / 256))
+        crs = osr.SpatialReference()
+        crs.ImportFromEPSG(3857)
+        ds.SetProjection(crs.ExportToWkt())
+        for i, value in enumerate((180, 90, 45, 255), 1):
+            ds.GetRasterBand(i).Fill(value)
+        ds.GetRasterBand(4).SetColorInterpretation(gdal.GCI_AlphaBand)
+        ds.GetRasterBand(4).WriteArray(
+            np.zeros((128, 256), dtype="uint8"), 0, 128
+        )
+        ds = None
+        return src
+
+    def test_rgba_mbtiles_integration(self):
+        import sqlite3
+
+        from csmap_sheets.engine.xyz_tiles import (
+            mbtiles_tile_row,
+            tile_bounds,
+        )
+
+        try:
+            from osgeo import gdal, osr
+        except ImportError:
+            self.skipTest("GDAL runtime unavailable")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # Source covering exactly one z10 tile over Japan.
+            z, tx, ty = 10, 906, 403
+            west, south, east, north = tile_bounds(z, tx, ty)
+            src = root / "rgba.tif"
+            ds = gdal.GetDriverByName("GTiff").Create(
+                str(src), 256, 256, 4, gdal.GDT_Byte
+            )
+            ds.SetGeoTransform(
+                (west, (east - west) / 256, 0,
+                 north, 0, -(north - south) / 256)
+            )
+            crs = osr.SpatialReference()
+            crs.ImportFromEPSG(3857)
+            ds.SetProjection(crs.ExportToWkt())
+            for i, value in enumerate((180, 90, 45, 255), 1):
+                ds.GetRasterBand(i).Fill(value)
+            ds.GetRasterBand(4).SetColorInterpretation(gdal.GCI_AlphaBand)
+            ds.GetRasterBand(4).WriteArray(
+                np.zeros((128, 256), dtype="uint8"), 0, 128
+            )
+            ds = None
+            result = write_xyz(
+                src,
+                root / "tiles",
+                dict(xyz_min_zoom=z, xyz_max_zoom=z,
+                     xyz_format="mbtiles"),
+                gdal,
+                osr,
+            )
+            self.assertEqual(result["status"], "completed")
+            self.assertEqual(result["format"], "mbtiles")
+            self.assertEqual(result["written_tiles"], 1)
+            mbtiles = root / "tiles/cs_relief.mbtiles"
+            self.assertTrue(mbtiles.exists())
+            self.assertFalse((root / "tiles/cs_relief.mbtiles.part").exists())
+            conn = sqlite3.connect(str(mbtiles))
+            rows = conn.execute(
+                "SELECT zoom_level, tile_column, tile_row, tile_data"
+                " FROM tiles"
+            ).fetchall()
+            self.assertEqual(len(rows), 1)
+            rz, rx, row, blob = rows[0]
+            # Stored row is TMS: flipped against the XYZ y.
+            self.assertEqual((rz, rx, row),
+                             (z, tx, mbtiles_tile_row(z, ty)))
+            self.assertEqual(blob[:8], b"\x89PNG\r\n\x1a\n")
+            meta = dict(conn.execute("SELECT name, value FROM metadata"))
+            conn.close()
+            self.assertEqual(meta["format"], "png")
+            self.assertEqual(meta["type"], "baselayer")
+            self.assertEqual(meta["minzoom"], str(z))
+            self.assertEqual(meta["maxzoom"], str(z))
+            # metadata bounds are the tile's WGS84 bounds.
+            import math
+
+            radius = 6378137.0
+            exp = (
+                math.degrees(west / radius),
+                math.degrees(math.atan(math.sinh(south / radius))),
+                math.degrees(east / radius),
+                math.degrees(math.atan(math.sinh(north / radius))),
+            )
+            bounds = [float(v) for v in meta["bounds"].split(",")]
+            for got, want in zip(bounds, exp):
+                self.assertAlmostEqual(got, want, places=4)
+            # The stored tile decodes as a 256x256 RGBA PNG.
+            Path(root / "tile.png").write_bytes(bytes(blob))
+            tile = gdal.Open(str(root / "tile.png"))
+            self.assertEqual(
+                (tile.RasterXSize, tile.RasterYSize, tile.RasterCount),
+                (256, 256, 4),
+            )
+            pixels = tile.ReadAsArray()
+            np.testing.assert_array_equal(pixels[:3, 10, 10], [180, 90, 45])
+            self.assertEqual(pixels[3, 10, 10], 255)
+            self.assertEqual(pixels[3, 200, 10], 0)
+            tile = None
+
+    def test_mbtiles_tile_set_matches_folder_output(self):
+        try:
+            from osgeo import gdal, osr
+        except ImportError:
+            self.skipTest("GDAL runtime unavailable")
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = self._world_source(root, gdal, osr)
+            write_xyz(
+                src, root / "folder",
+                dict(xyz_min_zoom=1, xyz_max_zoom=2),
+                gdal, osr,
+            )
+            folder_tiles = {
+                (int(p.parts[-3]), int(p.parts[-2]),
+                 int(p.stem))
+                for p in (root / "folder").rglob("*.png")
+            }
+            result = write_xyz(
+                src, root / "mb",
+                dict(xyz_min_zoom=1, xyz_max_zoom=2,
+                     xyz_format="mbtiles"),
+                gdal, osr,
+            )
+            conn = sqlite3.connect(str(root / "mb/cs_relief.mbtiles"))
+            stored = conn.execute(
+                "SELECT zoom_level, tile_column, tile_row FROM tiles"
+            ).fetchall()
+            conn.close()
+            mb_tiles = {
+                (z, x, (1 << z) - 1 - row) for z, x, row in stored
+            }
+            self.assertEqual(mb_tiles, folder_tiles)
+            self.assertEqual(result["written_tiles"], len(folder_tiles))
