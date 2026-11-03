@@ -1,4 +1,4 @@
-# 検証証跡の索引（2026-10-31）
+# 検証証跡の索引（2026-11-03）
 
 PR #31 W1〜W5 統括（pr31-w1-w5-status.md）が参照する証跡の所在一覧。
 新しい証跡を作ったときは、ここへ1行追加してから判定を更新する。
@@ -15,6 +15,7 @@ PR #31 W1〜W5 統括（pr31-w1-w5-status.md）が参照する証跡の所在一
 | sample-data-0.13.0.md | 検証用サンプルの生成手順（PR #59 で main 取込済み） |
 | manual-audit/ 3文書＋ addendum-0.13.1.md（PR #75） | 手順書の実装照合と v0.13.1 追補 |
 | t3-mask-evidence/ | PR #68 T3 の証跡 |
+| linux-session-0.13.1-20261103.md | 実施票 A〜H の Linux 代替実施（2026-11-03）。A〜F・H 確認、G は等価確認。Windows 実機の残りは同文書に明記 |
 
 ## Google Drive「CS_Map-Sheets_AI連絡」
 
