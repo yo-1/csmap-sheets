@@ -1,3 +1,10 @@
+2026-11-03 v0.14.0公開準備
+- 基準main fa516f7（PR #81 COG・PR #82 MBTiles マージ時点）に、版・文書の更新のみを加えたもの。
+- 内容: COG追加出力（Issue #64）、MBTiles出力（Issue #63）、フォーム整理案A（Issue #45）、DEMが使われない場合の案内（Issue #71）、処理上限の警告（PR #57）。設定プロファイルはv6（v5も読み込み可）。
+- 検証: Linux QGIS 3.44.14で全251件成功（skipped=4）、flake8 clean、GitHub CI全通過。実機セッション実施票A〜HのLinux代替実施で表示・警告・旧JSON・PSS往復・nodata透明化を確認（docs/validation/linux-session-0.13.1-20261103.md）。
+- 未確認: Windows実機・QFieldでの表示確認、プラグインマネージャ画面、実モニターDPI、ネイティブ保存ダイアログは次版の受入で確認する。既存の計算式と既定の出力は変更なし（COGは既定オフ、MBTilesは選択式で既定はPNGフォルダー）。
+- 版別記録: docs/validation/release-0.14.0.md（リポジトリ）。QGIS公式への0.14.0申請・審査・配信は別確認。
+
 2026-10-26 v0.13.1公開準備
 - 基準main ea1c238cc0f846eaf9acf3342f95c12961c1b7e4のPR #68修正と#69連絡先更新を採用。PR #57は利用者判断で当面見送り。
 - Windows QGIS 3.44.15の対象機能受入を統括が承認。60候補中51出力・9件no_dem_coverage、completed、partial_success=true。9図郭の有効DEM画素0を独立確認した正式報告に基づく。本担当によるWindows再実行なし。
