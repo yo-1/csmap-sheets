@@ -41,7 +41,7 @@ from .input_sources import (
     prepare_inputs,
 )
 
-VERSION = "0.13.1"
+VERSION = "0.14.0"
 PLUGIN_TITLE_JA = "図郭対応CS立体図作成プラグイン（CS Map Sheets）"
 
 
@@ -457,7 +457,7 @@ PROFILE_EXCLUDED = frozenset(
         "confirm_elevation_metres",
     }
 )
-PROFILE_SCHEMA = "csmap-settings-profile-v5"
+PROFILE_SCHEMA = "csmap-settings-profile-v6"
 
 
 def configuration_defaults():
@@ -485,6 +485,11 @@ def configuration_defaults():
         # 2026-09-30。VRTは個々の図郭タイルへの参照のため、成果物を
         # 単独で移動・配布する用途にはGeoTIFFの方が扱いやすい）。
         merged_geotiff_enabled=True,
+        # v0.14.0 (Issue #64): also write a Cloud Optimized GeoTIFF copy
+        # of the CS relief mosaic for mobile use (QField etc.). Default
+        # off; the source is the always-built cs_relief.vrt, so this does
+        # not depend on merged_geotiff_enabled.
+        cog_enabled=False,
         # Optional elevation DEM; retain the existing VRT-only default.
         merged_dem_enabled=False,
         # v0.10.0: 傾斜計算アルゴリズムの選択（ユーザー要望、2026-10-02）。
@@ -668,6 +673,8 @@ def validate_config(c, base_dir, feedback=None):
         )
     if not isinstance(c["merged_geotiff_enabled"], bool):
         raise ValueError("merged_geotiff_enabled must be boolean")
+    if not isinstance(c["cog_enabled"], bool):
+        raise ValueError("cog_enabled must be boolean")
     if not isinstance(c["merged_dem_enabled"], bool):
         raise ValueError("merged_dem_enabled must be boolean")
     for key in ("cell_size", "curvature_limit", "slope_max"):
@@ -1373,6 +1380,43 @@ def detect_elevation_range(raster_ds, margin, feedback=None):
     return [lo, hi], [dmin, dmax]
 
 
+def write_cog(gdal, source_path, cog_path, compression):
+    """Write a Cloud Optimized GeoTIFF copy of the CS relief mosaic.
+
+    The source is the always-built cs_relief.vrt, so the COG output does
+    not depend on the optional merged GeoTIFF export. Overview resampling
+    is NEAREST so that overview colours and the alpha edge stay identical
+    to the full-resolution pixels (choice recorded for Issue #64). When
+    the COG driver is unavailable this raises instead of silently writing
+    another format.
+    """
+    if gdal.GetDriverByName("COG") is None:
+        raise RuntimeError(
+            "COGドライバーが利用できないため、COGを出力できません"
+            "（GDAL 3.1以降が必要です）: " + str(cog_path)
+        )
+    src = gdal.Open(source_path)
+    if src is None:
+        raise RuntimeError(
+            "COG書き出し用のVRTを開けませんでした: " + str(source_path)
+        )
+    cog = gdal.Translate(
+        str(cog_path),
+        src,
+        format="COG",
+        creationOptions=[
+            f"COMPRESS={compression}",
+            "OVERVIEW_RESAMPLING=NEAREST",
+            "BIGTIFF=IF_SAFER",
+        ],
+    )
+    src = None
+    if cog is None:
+        raise RuntimeError("COGの書き出しに失敗しました: " + str(cog_path))
+    cog.FlushCache()
+    return cog_path
+
+
 def run(c, feedback=None, profile_warnings=()):
     from osgeo import gdal, osr, ogr
 
@@ -1551,6 +1595,16 @@ def run(c, feedback=None, profile_warnings=()):
             report(feedback, f"Merged GeoTIFF: {merged_path}")
         else:
             manifest["cs_merged_geotiff"] = None
+        if c.get("cog_enabled", False):
+            check_cancel(feedback)
+            manifest["stage"] = "cog_geotiff"
+            save()
+            cog_path = out / "cs_relief_merged_cog.tif"
+            write_cog(gdal, cs_mosaic, cog_path, c["compression"])
+            manifest["cs_cog_geotiff"] = "cs_relief_merged_cog.tif"
+            report(feedback, f"COG: {cog_path}")
+        else:
+            manifest["cs_cog_geotiff"] = None
         if c.get("xyz_enabled", True):
             manifest["stage"] = "xyz"
             save()

@@ -51,7 +51,7 @@ class ProfileRoundtripTests(unittest.TestCase):
                 for key, value in data["settings"].items():
                     self.assertEqual(second[key], value, key)
                 self.assertEqual(
-                    payload["schema"], "csmap-settings-profile-v5"
+                    payload["schema"], "csmap-settings-profile-v6"
                 )
                 self.assertFalse(
                     set(payload["settings"])

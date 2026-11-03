@@ -181,7 +181,10 @@ PARAMETER_SECTIONS = {
         "XYZ_MAX",
         "XYZ_LIMIT",
     ),
-    "出力": ("COMPRESSION", "MERGED_GEOTIFF", "MERGED_DEM", "LOAD", "OUTPUT"),
+    "出力": (
+        "COMPRESSION", "MERGED_GEOTIFF", "MERGED_COG", "MERGED_DEM",
+        "LOAD", "OUTPUT",
+    ),
 }
 # 区分名と重なる既存の接頭辞は外す（例：「テキスト：区切り文字」→「【テキスト】区切り文字」）
 SECTION_REDUNDANT_PREFIXES = {
@@ -879,6 +882,13 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         )
         self.addParameter(
             QgsProcessingParameterBoolean(
+                "MERGED_COG",
+                "全域CS方式画像をCOGとしても出力する（QField等のモバイル向け）",
+                False,
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterBoolean(
                 "MERGED_DEM",
                 "マージ・格子整合済みの標高DEMをGeoTIFFでも保存する（追加容量が必要）",
                 False,
@@ -900,6 +910,11 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         self.addOutput(
             QgsProcessingOutputRasterLayer(
                 "CS_MERGED_GEOTIFF", "全域CS方式画像（結合GeoTIFF）"
+            )
+        )
+        self.addOutput(
+            QgsProcessingOutputRasterLayer(
+                "CS_COG_GEOTIFF", "全域CS方式画像（COG）"
             )
         )
         self.addOutput(
@@ -1405,6 +1420,9 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
             merged_geotiff_enabled=self.parameterAsBool(
                 parameters, "MERGED_GEOTIFF", context
             ),
+            cog_enabled=self.parameterAsBool(
+                parameters, "MERGED_COG", context
+            ),
             merged_dem_enabled=self.parameterAsBool(
                 parameters, "MERGED_DEM", context
             ),
@@ -1644,6 +1662,11 @@ class CSMapAlgorithm(QgsProcessingAlgorithm):
         outputs["CS_MERGED_GEOTIFF"] = (
             str(self.result_dir / "cs_relief_merged.tif")
             if self.settings["merged_geotiff_enabled"]
+            else ""
+        )
+        outputs["CS_COG_GEOTIFF"] = (
+            str(self.result_dir / "cs_relief_merged_cog.tif")
+            if self.settings.get("cog_enabled", False)
             else ""
         )
         outputs["DEM_MERGED_GEOTIFF"] = (
