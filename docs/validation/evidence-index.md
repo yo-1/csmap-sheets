@@ -10,7 +10,7 @@ PR #31 W1〜W5 統括（pr31-w1-w5-status.md）が参照する証跡の所在一
 | project-audit-20261017.md | 旧監査。W1〜W4 の定義の出所 |
 | ui-fixes-0.12.3.md | v0.12.3 のUI修正6手順。DPI等は実機未確認と明記 |
 | windows-0.13.0.md | QGIS 3.44.13 での 0.13.0 受入記録（項目別の確認範囲つき） |
-| release-0.13.0-prep.md / release-0.13.1.md | リリース管理・検証記録 |
+| release-0.13.0-prep.md / release-0.13.1.md / release-0.14.0.md | リリース管理・検証記録 |
 | merged-dem-0.12.4.md | MERGED_DEM の検証記録 |
 | sample-data-0.13.0.md | 検証用サンプルの生成手順（PR #59 で main 取込済み） |
 | manual-audit/ 3文書＋ addendum-0.13.1.md（PR #75） | 手順書の実装照合と v0.13.1 追補 |
@@ -26,6 +26,7 @@ PR #31 W1〜W5 統括（pr31-w1-w5-status.md）が参照する証跡の所在一
 | pr68_windows_evidence_20261028.zip（ID 1izmNLV0LtAKps9oLnIlVcNm8b6sXRI9T、SHA-256 b816ac40…） | Codex の Windows 全件実行（1,103/289）・ロック・キャンセルの証跡一式。Muse が全 run.json を照合済み |
 | t3-fixture.zip（ID 1yDLYCa5SuB_JoK7Nam574oHsLerIOkwC） | PR #68 検証で使った人工DEM・sliver-only DEM・プロファイル |
 | v0.13.1 リリースZIP（ID 1mIZLOa0fhnPpKmCqbx6QfqO6fREqyYDX、SHA-256 6d9c7501…） | 配布物。検証用テストZIPとのコード同一性は PR #75 追補で確認 |
+| claude-to-muse_20261104-1935_CSMapSheets_v0.14.0_ポータル申請_実施報告.md（ID 1TqoeDoq5fbdX2jsmIKpRhD6Ykqx-r0h2） | v0.14.0 ポータル申請の実施報告（Claude実施・利用者が最終操作）。2026-11-04 19:29 JST 提出、審査待ち |
 
 ## GitHub
 
