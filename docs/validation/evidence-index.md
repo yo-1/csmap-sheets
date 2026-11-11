@@ -44,3 +44,5 @@ PR #31 W1〜W5 統括（pr31-w1-w5-status.md）が参照する証跡の所在一
 - `CS_Map_Sheets_PR31_Windows_minimum_validation_20261009.md`（W5 の定義を含む可能性のある原本）
 - `CS_Map_Sheets_PR31_ready_20261014.zip`
 - 利用手順書 rc6 の DOCX/PDF（Drive の最新は 2026-10-20 の rc2）
+| 2026-11-11 | ポータル承認の確認 | plugins.qgis.org /plugins/csmap_sheets/version/0.14.0/ を Muse が実測 | v0.14.0 が Approved = yes、本体ページで最新安定版として掲載 |
+| 2026-11-11 | ポータル登録ZIPの照合 | 同バージョンページのダウンロードから取得したZIPと配布ZIPを比較 | 277,619バイト、SHA-256 2743b8e4… 完全一致 |
