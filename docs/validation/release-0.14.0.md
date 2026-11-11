@@ -24,11 +24,11 @@
 - 2026-11-04 19:29 JST に plugins.qgis.org へ提出済み。バージョンページ：https://plugins.qgis.org/plugins/csmap_sheets/version/0.14.0/
 - 実施はClaude（ZIPの受け渡しとチェックリスト1〜3）と利用者（ログイン、チェックリスト4〜6、Save）の分担。Muse のブラウザ担当はポリシーにより送信を引き受けなかったため、依頼文書（Drive、muse-to-claude / muse-to-gpt 20261104-0725）で委託した。
 - Muse が 2026-11-04 20:55 JST にポータルで実測：Approved = no（手動審査待ち）、Security Scan ✓、Qt6 Check ✓、Experimental = no、対応版 3.44.0〜3.99.0、外部依存なし。変更履歴は metadata の 0.14.0 版差と一致。
-- アップロード前に渡したZIPのハッシュは提出側で照合済み。ポータル登録ZIP自体のハッシュはページに表示がなく未照合であり、承認後のダウンロードで照合する（Claude報告の未確認事項を引き継ぐ）。
+- 承認：2026-11-11 20:38 JST に Muse が実測し **Approved = yes** を確認。プラグイン本体ページでも 0.14.0 が最新の安定版として掲載されている（提出から約7日で手動承認通過）。
+- ポータル登録ZIPの照合（同日）：バージョンページのダウンロード（/plugins/csmap_sheets/version/0.14.0/download/）から取得したZIPは 277,619バイト、SHA-256 2743b8e4290640d5268b2c848eb9bd6c9c8448c7d0c5d57cd2fe1f0cb49749ee で、配布ZIPと完全一致。Claude報告の未確認事項はこれで解消した。
 
 ## 未確認（次版の受入へ）
 
-- 承認の時期と結果。
 - Windows実機・QFieldでの表示確認、プラグインマネージャ画面、実モニターDPI、ネイティブ保存ダイアログ。
 
 ## 参照
