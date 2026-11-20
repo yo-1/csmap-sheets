@@ -1,4 +1,8 @@
-"""Run tests with initialized QGIS (QT_QPA_PLATFORM=offscreen for CI)."""
+"""Standalone QGIS Python test runner (QT_QPA_PLATFORM=offscreen for CI).
+
+Do not execute/import this script inside a running QGIS Desktop session or
+through QGIS Dev Probe. It owns a separate QgsApplication lifecycle.
+"""
 import sys
 import unittest
 from qgis.core import QgsApplication
